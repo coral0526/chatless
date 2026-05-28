@@ -10,6 +10,7 @@ import { AboutSupportSettings } from "@/components/settings/AboutSupportSettings
 import { McpServersSettings } from "@/components/settings/McpServersSettings";
 import { WebSearchSettings } from "@/components/settings/WebSearchSettings";
 import { WebDavSyncSettings } from "@/components/settings/WebDavSyncSettings";
+import { ApiKeySettings } from "@/components/settings/ApiKeySettings";
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 // 已移除 recordAboutViewed 存储，蓝点逻辑已简化为“存在可更新且未忽略”
@@ -34,6 +35,8 @@ export default function SettingsPage() {
         return <AiModelSettings />;
       case "knowledgeBase":
         return <KnowledgeBaseSettings />;
+      case "apiKeys":
+        return <ApiKeySettings />;
       case "general":
         return <GeneralSettings />;
       case "sync":

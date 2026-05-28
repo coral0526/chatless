@@ -1,22 +1,24 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { 
-  SlidersHorizontal, 
-  ShieldCheck, 
-  Bot, 
+import {
+  SlidersHorizontal,
+  ShieldCheck,
+  Bot,
   Settings,
   Database,
   Info,
   Plug,
   Globe,
-  Cloud
+  Cloud,
+  Key
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { shouldShowAboutBlueDot, UPDATE_AVAILABILITY_EVENT, checkForUpdatesSilently } from '@/lib/update/update-notifier';
 
 const settingsTabs = [
   { id: 'general', name: '常规', icon: SlidersHorizontal },
+  { id: 'apiKeys', name: 'API 密钥', icon: Key },
   { id: 'localModels', name: 'AI模型', icon: Bot },
   { id: 'knowledgeBase', name: '知识库', icon: Database },
   { id: 'sync', name: '同步', icon: Cloud },
