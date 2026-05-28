@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { SelectField } from "./SelectField";
-import { SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal, FolderOpen, RotateCcw, Folder } from "lucide-react";
 import StorageUtil from "@/lib/storage";
 import { useMarkdownFontSize } from "@/hooks/useMarkdownFontSize";
 import { useGlobalFontSize } from "@/hooks/useGlobalFontSize";
@@ -22,6 +22,8 @@ export function GeneralSettings() {
   const [theme, setTheme] = useState<string>("system");
   const [lang, setLang] = useState<string>("zh");
   const [initialized, setInitialized] = useState(false);
+  const [downloadDir, setDownloadDir] = useState<string>("");
+  const [autoSaveCodeBlocks, setAutoSaveCodeBlocks] = useState(false);
   const { size: chatFontSize, setSize: setChatFontSize } = useMarkdownFontSize();
   const { size: globalFontSize, setSize: setGlobalFontSize } = useGlobalFontSize();
   // Markdown主题系统已禁用
@@ -33,11 +35,33 @@ export function GeneralSettings() {
     const loadSettings = async () => {
       const savedTheme = await StorageUtil.getItem<string>(THEME_KEY, "system");
       const savedLang = await StorageUtil.getItem<string>(LANG_KEY, "zh");
+      const savedDir = await StorageUtil.getItem<string>("download_directory", "");
+      const savedAuto = await StorageUtil.getItem<boolean>("auto_save_code_blocks", false);
       setTheme(savedTheme || "system");
       setLang(savedLang || "zh");
+      setDownloadDir(savedDir || "");
+      setAutoSaveCodeBlocks(savedAuto || false);
       setInitialized(true);
     };
     loadSettings();
+  }, []);
+
+  const handlePickDirectory = useCallback(async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const path = await open({ directory: true, multiple: false, title: '选择下载保存目录' });
+      if (path && typeof path === 'string') {
+        setDownloadDir(path);
+        StorageUtil.setItem("download_directory", path);
+      }
+    } catch {
+      // dialog not available (browser)
+    }
+  }, []);
+
+  const handleResetDirectory = useCallback(() => {
+    setDownloadDir("");
+    StorageUtil.setItem("download_directory", "");
   }, []);
 
   // 应用主题 & 保存
@@ -155,6 +179,51 @@ export function GeneralSettings() {
             value={globalFontSize}
             onChange={(v) => setGlobalFontSize(v as any)}
           />
+        </div>
+
+        {/* 下载设置 */}
+        <div className="pt-4 border-t border-slate-100/80 dark:border-slate-800/60">
+          <div className="flex items-center gap-2 mb-3">
+            <Folder className="w-4 h-4 text-amber-500" />
+            <div className="text-xs font-medium text-slate-500 dark:text-slate-400">下载设置</div>
+          </div>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex-1 min-w-0 mr-3">
+                <div className="text-sm font-medium text-slate-700 dark:text-slate-300">下载保存目录</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                  {downloadDir || "未设置（每次弹出保存对话框）"}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {downloadDir && (
+                  <button
+                    onClick={handleResetDirectory}
+                    className="px-2.5 py-1.5 text-xs rounded-md text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    title="重置目录"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <button
+                  onClick={() => { void handlePickDirectory(); }}
+                  className="px-3 py-1.5 text-xs rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors flex items-center gap-1.5"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  选择目录
+                </button>
+              </div>
+            </div>
+
+            <ToggleSwitch
+              label="自动保存 AI 生成的代码块"
+              checked={autoSaveCodeBlocks}
+              onChange={(v) => {
+                setAutoSaveCodeBlocks(v);
+                StorageUtil.setItem("auto_save_code_blocks", v);
+              }}
+            />
+          </div>
         </div>
 
                  {/* 应用行为设置 */}

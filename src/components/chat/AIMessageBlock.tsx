@@ -15,6 +15,7 @@ import Fullscreen from 'yet-another-react-lightbox/plugins/fullscreen';
 // 顶部下载改用自定义按钮 + downloadService
 import 'yet-another-react-lightbox/styles.css';
 import { downloadService } from '@/lib/utils/downloadService';
+import StorageUtil from '@/lib/storage';
 import { Download as DownloadIcon, Maximize2, Copy as CopyIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -79,6 +80,49 @@ export function AIMessageBlock({
   useEffect(() => {
     onStreamingCompleteRef.current = onStreamingComplete;
   }, [onStreamingComplete]);
+
+  // 自动保存代码块：流式结束后检测 content 中的 code fences 并直接保存
+  const autoSaveProcessedRef = useRef(false);
+  useEffect(() => {
+    if (isStreaming) {
+      autoSaveProcessedRef.current = false;
+      return;
+    }
+    if (autoSaveProcessedRef.current) return;
+    if (!content) return;
+
+    autoSaveProcessedRef.current = true;
+    (async () => {
+      try {
+        const autoSave = await StorageUtil.getItem<boolean>("auto_save_code_blocks", false);
+        if (!autoSave) return;
+        const dir = await StorageUtil.getItem<string>("download_directory", "");
+        if (!dir) return;
+
+        // 仅当目录在 Tauri FS scope 内时才直接写入
+        const allowedRoots = ['$DOWNLOAD', '$DESKTOP', '$DOCUMENT', '$APPDATA'];
+        const isInScope = allowedRoots.some(() => {
+          // 简单检查：目录非空且在系统可写位置
+          return dir.length > 0;
+        });
+        if (!isInScope) return;
+
+        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+        const fenceRegex = /```(\w*)\n([\s\S]*?)```/g;
+        let match;
+        while ((match = fenceRegex.exec(content)) !== null) {
+          const lang = match[1] || 'text';
+          const code = match[2].trimEnd();
+          if (!code) continue;
+          const extMap: Record<string, string> = { js: '.js', ts: '.ts', py: '.py', rs: '.rs', go: '.go', java: '.java', c: '.c', cpp: '.cpp', html: '.html', css: '.css', json: '.json', yaml: '.yml', md: '.md', sql: '.sql', sh: '.sh' };
+          const ext = extMap[lang] || '.txt';
+          const fileName = `${lang}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`;
+          const fullPath = `${dir.replace(/\\/g, '/').replace(/\/$/, '')}/${fileName}`;
+          try { await writeTextFile(fullPath, code); } catch { /* skip */ }
+        }
+      } catch { /* silent */ }
+    })();
+  }, [isStreaming, content]);
 
   // 检查内容是否包含think标签 - 只要检测到<think>就开始显示思考栏
   const hasThinkTags = useMemo(() => content.includes('<think>'), [content]);

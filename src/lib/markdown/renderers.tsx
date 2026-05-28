@@ -1,21 +1,33 @@
 import type { ThemeStyles } from '@/lib/markdown/themes';
+import { CodeBlock } from '@/components/chat/CodeBlock';
 
 /**
  * Markdown渲染器
- * 
- * 当前状态：移除所有自定义样式，恢复Streamdown原生渲染
- * 参数保留以兼容现有代码，但不再应用主题样式
+ *
+ * 自定义 code 渲染器：block code 使用 CodeBlock 组件（带下载/复制按钮），
+ * inline code 使用原生渲染。
  */
 export function createMarkdownRenderers(
   _size: 'small' | 'medium' | 'large',
   _themeStyles: ThemeStyles
 ): { renderers: Partial<Record<string, any>>; containerClass: string } {
-  
-  // 不再应用任何容器样式类
+
   const containerClass = '';
 
-  // 返回空的renderers对象，让Streamdown使用默认渲染
-  const renderers = {};
+  const renderers: Record<string, any> = {
+    code: ({ className, children, ...props }: any) => {
+      // inline code: no className
+      if (!className) {
+        return <code className="bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>;
+      }
+
+      const match = /language-(\w+)/.exec(className || '');
+      const language = match ? match[1] : null;
+      const codeText = String(children).replace(/\n$/, '');
+
+      return <CodeBlock language={language} code={codeText} />;
+    },
+  };
 
   return { renderers, containerClass };
 }

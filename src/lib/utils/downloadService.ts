@@ -234,7 +234,89 @@ export class DownloadService {
     const finalFileName = fileName.endsWith('.csv') ? fileName : `${fileName}.csv`;
     return this.downloadFile(finalFileName, content, 'text/csv;charset=utf-8');
   }
+
+  /**
+   * 保存代码块到文件
+   * 通过保存对话框下载，用配置目录作为默认路径
+   */
+  async saveCodeBlock(
+    code: string,
+    language: string,
+    downloadDir?: string | null
+  ): Promise<{ success: boolean; savedPath?: string }> {
+    const ext = getLanguageExtension(language);
+    const timestamp = Date.now();
+    const fileName = `${language || 'code'}_${timestamp}${ext}`;
+
+    const defaultPath = downloadDir
+      ? `${downloadDir.replace(/\\/g, '/').replace(/\/$/, '')}/${fileName}`
+      : fileName;
+
+    try {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+      const filePath = await save({
+        filters: [{ name: ext, extensions: [ext.replace('.', '')] }],
+        defaultPath,
+      });
+      if (!filePath) return { success: false };
+      await writeTextFile(filePath, code);
+      return { success: true, savedPath: filePath };
+    } catch {
+      return { success: false };
+    }
+  }
+}
+
+/** 语言到文件扩展名的映射 */
+function getLanguageExtension(lang: string): string {
+  const map: Record<string, string> = {
+    javascript: '.js', js: '.js', jsx: '.jsx',
+    typescript: '.ts', ts: '.ts', tsx: '.tsx',
+    python: '.py', py: '.py',
+    rust: '.rs', rs: '.rs',
+    go: '.go', golang: '.go',
+    java: '.java',
+    c: '.c', cpp: '.cpp', 'c++': '.cpp', cxx: '.cpp',
+    csharp: '.cs', cs: '.cs', 'c#': '.cs',
+    html: '.html', htm: '.html',
+    css: '.css', scss: '.scss', sass: '.sass', less: '.less',
+    json: '.json', json5: '.json5',
+    yaml: '.yml', yml: '.yml',
+    toml: '.toml',
+    xml: '.xml', svg: '.svg',
+    markdown: '.md', md: '.md', mdx: '.mdx',
+    sql: '.sql', pgsql: '.sql', mysql: '.sql',
+    shell: '.sh', bash: '.sh', sh: '.sh', zsh: '.sh',
+    powershell: '.ps1', ps1: '.ps1', pwsh: '.ps1',
+    bat: '.bat', cmd: '.bat',
+    dockerfile: '.dockerfile', docker: '.dockerfile',
+    makefile: '.mk', make: '.mk',
+    ruby: '.rb', rb: '.rb',
+    php: '.php',
+    swift: '.swift',
+    kotlin: '.kt', kt: '.kt',
+    scala: '.scala',
+    dart: '.dart',
+    lua: '.lua',
+    perl: '.pl', pl: '.pl',
+    r: '.r',
+    elixir: '.ex', ex: '.ex', exs: '.exs',
+    erlang: '.erl', erl: '.erl',
+    haskell: '.hs', hs: '.hs',
+    clojure: '.clj', clj: '.clj',
+    groovy: '.groovy',
+    graphql: '.graphql', gql: '.graphql',
+    vue: '.vue', svelte: '.svelte',
+    ini: '.ini', cfg: '.cfg', conf: '.conf',
+    properties: '.properties', env: '.env',
+    diff: '.diff', patch: '.patch',
+    nginx: '.nginx',
+    text: '.txt', txt: '.txt', plaintext: '.txt',
+  };
+  const key = (lang || '').toLowerCase();
+  return map[key] || '.txt';
 }
 
 // 导出单例实例
-export const downloadService = DownloadService.getInstance(); 
+export const downloadService = DownloadService.getInstance();

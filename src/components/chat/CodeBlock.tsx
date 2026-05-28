@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, memo } from 'react';
-import { Copy, Check } from 'lucide-react';
+import { useState, memo, useCallback, useRef } from 'react';
+import { Copy, Check, Download, Loader2 } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { downloadService } from '@/lib/utils/downloadService';
+import StorageUtil from '@/lib/storage';
 
 interface CodeBlockProps {
   language: string | null;
@@ -14,24 +16,55 @@ interface CodeBlockProps {
 
 const CodeBlock = memo(({ language, code }: CodeBlockProps) => {
   const [isCopied, setIsCopied] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const copyToClipboard = async () => {
-    if (!navigator.clipboard) {
-      return;
-    }
+    if (!navigator.clipboard) return;
     try {
       await navigator.clipboard.writeText(code);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
-    } catch (err) {
-      void err;
-    }
+    } catch { /* ignore */ }
   };
+
+  const handleDownload = useCallback(async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setIsSaving(true);
+    try {
+      const downloadDir = await StorageUtil.getItem<string>('download_directory');
+      const result = await downloadService.saveCodeBlock(code, language || 'text', downloadDir);
+      if (result.success && result.savedPath) {
+        console.log('[CodeBlock] 文件已保存:', result.savedPath);
+      }
+    } catch {
+      // 用户取消或失败
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
+    }
+  }, [code, language]);
 
   const detectedLanguage = language || 'bash';
 
   return (
     <div className="relative group my-4 rounded-md bg-[#282c34] text-slate-100 w-full max-w-full min-w-0 overflow-x-auto">
+      {/* 下载按钮 */}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => { void handleDownload(); }}
+        disabled={isSaving}
+        className={cn(
+          "absolute top-2 right-10 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity",
+          "text-[#7D7C78] hover:bg-[#ECEBE8]"
+        )}
+        title="下载代码"
+      >
+        {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+      </Button>
+
       {/* 复制按钮 */}
       <Button
         variant="ghost"
