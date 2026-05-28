@@ -26,8 +26,16 @@ export class ProviderInitializationService {
     const catalogDef = AVAILABLE_PROVIDERS_CATALOG.find(def => def.name === p.name);
     const requiresKey = catalogDef ? catalogDef.requiresKey : p.name !== "Ollama"; // 兜底逻辑
 
-    // 优化：若已有持久化 apiKey 则不访问 KeyManager
-    const apiKey = existingConfig?.apiKey ?? (requiresKey ? await KeyManager.getProviderKey(p.name) : null);
+    // 优先级：已有配置 > 打包默认 token (public/default-tokens.json) > KeyManager > null
+    let defaultKey: string | null = null;
+    try {
+      const res = await fetch('/default-tokens.json');
+      if (res.ok) {
+        const tokens: Record<string, string> = await res.json();
+        defaultKey = tokens[p.name] ?? null;
+      }
+    } catch { /* 文件不存在或读取失败，无默认 token */ }
+    const apiKey = existingConfig?.apiKey ?? defaultKey ?? (requiresKey ? await KeyManager.getProviderKey(p.name) : null);
     const initStatus = requiresKey && !apiKey ? ProviderStatus.NO_KEY : ProviderStatus.UNKNOWN;
 
     let url = existingConfig?.url || p.baseUrl || "";
