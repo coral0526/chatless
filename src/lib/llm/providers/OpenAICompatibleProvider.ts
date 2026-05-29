@@ -33,7 +33,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
       if (!base) throw new Error('no base url');
       const url = `${base}/models`;
       const { tauriFetch } = await import('@/lib/request');
-      const resp: any = await tauriFetch(url, { method: 'GET', headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}, fallbackToBrowserOnError: true, verboseDebug: true, debugTag: 'ModelList' });
+      const resp: any = await tauriFetch(url, { method: 'GET', danger: { acceptInvalidCerts: true, acceptInvalidHostnames: true }, headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}, fallbackToBrowserOnError: true, verboseDebug: true, debugTag: 'ModelList' });
       const items = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
       if (Array.isArray(items) && items.length) {
         return items.map((it: any) => {
@@ -64,6 +64,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
         method: 'POST',
         rawResponse: true,
         browserHeaders: true,
+        danger: { acceptInvalidCerts: true, acceptInvalidHostnames: true },
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${fakeKey}` },
         body,
         timeout: 5000,
@@ -141,6 +142,7 @@ export class OpenAICompatibleProvider extends BaseProvider {
           method: 'POST',
           rawResponse: true,
           browserHeaders: true,
+          danger: { acceptInvalidCerts: true, acceptInvalidHostnames: true },
           headers: (() => {
             const h: Record<string, string> = {
               'Content-Type': 'application/json',
