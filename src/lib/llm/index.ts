@@ -11,6 +11,7 @@ import { AVAILABLE_PROVIDERS_CATALOG } from '@/lib/provider/catalog';
 
 // —— 定义 Provider 注册顺序 ——
 const PROVIDER_ORDER = [
+  'OpenClawServer', // 0. 师兄网关（最高优先）
   'LM Studio',   // 1. 本地 LM Studio
   'Ollama',      // 2. 本地 Ollama
   'DeepSeek',    // 3. DeepSeek
@@ -23,7 +24,12 @@ const PROVIDER_ORDER = [
 // 同步注册所有providers，确保顺序正确
 function registerAllProviders(): void {
   console.log('[llm/index] 开始按顺序注册所有providers...');
-  
+
+  // 0. OpenClawServer - 师兄网关（OpenAI 兼容）
+  const openclawProvider = new OpenAICompatibleProvider('https://openclaw.un-net.com:18789/v1', undefined, 'OpenClawServer');
+  ProviderRegistry.register(openclawProvider);
+  console.log('[llm/index] 0. OpenClawServer 已注册');
+
   // 1. LM Studio - 本地 OpenAI 兼容，默认免密
   const lmStudioProvider = new OpenAICompatibleProvider('http://localhost:1234/v1', undefined, 'LM Studio');
   // 标记无需密钥，便于运行时跳过密钥校验

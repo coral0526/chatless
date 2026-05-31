@@ -86,6 +86,26 @@ export function TauriApp({ children }: TauriAppProps) {
         await initDatabaseService();
         startupMonitor.endPhase('数据库初始化');
 
+        // 初始化默认下载目录
+        try {
+          const { documentDir } = await import('@tauri-apps/api/path');
+          const docDir = await documentDir();
+          const desktopDir = docDir.startsWith('/root') ? '/home/unnet/Desktop/Chatless' : `${docDir}/Chatless`;
+
+          const dir = await StorageUtil.getItem<string>("download_directory", "");
+          console.log('[TauriApp] 当前存储的 download_directory:', JSON.stringify(dir));
+          // 修复无效路径：空值、/root 开头、包含 openclaw/workspace
+          const needsReset = !dir || dir.startsWith('/root') || dir.includes('openclaw') || dir.includes('workspace');
+          if (needsReset) {
+            console.log('[TauriApp] 检测到无效下载目录，重置为桌面:', JSON.stringify(dir), '→', desktopDir);
+            await StorageUtil.setItem("download_directory", desktopDir);
+          } else {
+            console.log('[TauriApp] download_directory 有效:', dir);
+          }
+          const auto = await StorageUtil.getItem<boolean | null>("auto_save_code_blocks", null);
+          if (auto === null) await StorageUtil.setItem("auto_save_code_blocks", true);
+        } catch { /* 非 Tauri 环境忽略 */ }
+
         // 初始化示例数据（如果需要）
         startupMonitor.startPhase('示例数据初始化');
         // 异步执行示例数据初始化，不阻塞主流程

@@ -64,38 +64,39 @@ pub async fn start_sse(
     *guard = Some(shutdown_tx);
   }
 
-  // 选择HTTP客户端：优先使用携带代理的自定义客户端；否则回退到最小化客户端
-  let client = if let Some(p) = proxy_url.clone().filter(|s| !s.is_empty()) {
-    let mut cfg = crate::http_client::HttpClientConfig::default();
-    cfg.http1_only = true;
-    cfg.gzip = false;
-    cfg.brotli = false;
-    cfg.proxy_url = Some(p);
+  // 构建专用的 SSE HTTP 客户端（不依赖全局 ClientManager，确保证书设置生效）
+  let mut client_builder = reqwest::Client::builder()
+    .danger_accept_invalid_certs(true)
+    .http1_only()
+    .no_gzip()
+    .no_brotli()
+    .connect_timeout(Duration::from_millis(10000))
+    .timeout(Duration::from_secs(30 * 60));
 
-    match crate::http_client::HttpClientManager::build_custom_client(cfg) {
-      Ok(client) => client,
-      Err(e) => {
-        app
-          .emit("sse-error", format!("Failed to build HTTP client with proxy: {}", e))
-          .ok();
-        return Err(format!("Failed to build HTTP client with proxy: {}", e));
-      }
+  if let Some(p) = proxy_url.clone().filter(|s| !s.is_empty()) {
+    if let Ok(proxy) = reqwest::Proxy::all(&p) {
+      client_builder = client_builder.proxy(proxy);
     }
-  } else {
-    match crate::http_client::get_minimal_client() {
-      Ok(client) => (*client).clone(), // 从Arc<Client>转换为Client
-      Err(e) => {
-        app
-          .emit("sse-error", format!("Failed to get HTTP client: {}", e))
-          .ok();
-        return Err(format!("Failed to get HTTP client: {}", e));
-      }
+  }
+
+  let client = match client_builder.build() {
+    Ok(c) => c,
+    Err(e) => {
+      let msg = format!("Failed to build SSE HTTP client: {}", e);
+      eprintln!("[sse] {}", msg);
+      app.emit("sse-error", &msg).ok();
+      return Err(msg);
     }
   };
 
   // 在后台任务中拉取 SSE 数据并通过 Tauri Event 转发给前端
   tauri::async_runtime::spawn(async move {
     app.emit("sse-status", "Connecting...").ok();
+    eprintln!("[sse] starting request to {}", url);
+    eprintln!("[sse] body present: {}, body size: {} bytes",
+      body.is_some(),
+      body.as_ref().map(|b| serde_json::to_string(b).unwrap_or_default().len()).unwrap_or(0)
+    );
 
     // ---------- 构造请求 ----------
     let http_method = method.unwrap_or_else(|| "GET".to_string()).to_uppercase();
@@ -130,6 +131,7 @@ pub async fn start_sse(
     let res = match req_builder.send().await {
       Ok(r) => r,
       Err(e) => {
+        eprintln!("[sse] request failed: {}", e);
         app.emit("sse-error", e.to_string()).ok();
         return;
       }
@@ -141,16 +143,17 @@ pub async fn start_sse(
       let status = res.status();
       let body_text = res.text().await.unwrap_or_default();
       let full_msg = format!("HTTP {}: {}", status, body_text);
+      eprintln!("[sse] request returned error: {}", full_msg);
       app.emit("sse-error", full_msg).ok();
       return;
     }
+    eprintln!("[sse] connected, status: {}", res.status());
     app
       .emit("sse-status", "Connected. Listening for events...")
       .ok();
 
     let mut stream = res.bytes_stream();
-    // 跨 chunk 行缓冲，避免一行在两个 chunk 之间被拆分导致上层解析失败
-    let mut line_buffer = String::new();
+    let mut raw_line: Vec<u8> = Vec::new();
     loop {
       tokio::select! {
           _ = shutdown_rx.recv() => {
@@ -160,27 +163,31 @@ pub async fn start_sse(
           Some(item) = stream.next() => {
               match item {
                   Ok(bytes) => {
-                      let chunk = String::from_utf8_lossy(&bytes);
-                      line_buffer.push_str(&chunk);
-                      while let Some(pos) = line_buffer.find('\n') {
-                          let mut line = line_buffer[..pos].to_string();
-                          // 移除已消费内容与换行符
-                          line_buffer.drain(..pos+1);
-                          if line.ends_with('\r') { line.pop(); }
+                      for &byte in bytes.iter() {
+                          if byte == b'\n' {
+                              let line_bytes = std::mem::take(&mut raw_line);
+                              let line = String::from_utf8(line_bytes)
+                                  .unwrap_or_else(|e| String::from_utf8_lossy(&e.into_bytes()).into_owned());
+                              let mut line = if line.ends_with('\r') {
+                                  line[..line.len()-1].to_string()
+                              } else { line };
 
-                          let payload = if let Some(data) = line.strip_prefix("data:") {
-                              data.trim()
+                              let payload = if let Some(data) = line.strip_prefix("data:") {
+                                  data.trim()
+                              } else {
+                                  line.trim()
+                              };
+
+                              if !payload.is_empty() {
+                                  app.emit("sse-event", payload.to_string()).ok();
+                              }
                           } else {
-                              // 对于 Ollama 这类直接返回 JSON 行的情况，整行即为数据
-                              line.trim()
-                          };
-
-                          if !payload.is_empty() {
-                              app.emit("sse-event", payload.to_string()).ok();
+                              raw_line.push(byte);
                           }
                       }
                   },
                   Err(e) => {
+                      eprintln!("[sse] stream error: {}", e);
                       app.emit("sse-error", e.to_string()).ok();
                       break;
                   }

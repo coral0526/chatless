@@ -70,7 +70,7 @@ export function reduce(model: MessageModel, action: MessageAction): MessageModel
     }
     case 'TOOL_HIT': {
       // 在插入卡片前，先清理尾部text中的任何指令残片，避免已累计的半截标签被显示
-      const cleanedTail = (() => {
+      let cleanedTail = (() => {
         const segs = Array.isArray(model.segments) ? [...model.segments] : [];
         if (segs.length > 0 && (segs[segs.length - 1] as any).kind === 'text') {
           const last: any = { ...(segs[segs.length - 1] as any) };
@@ -79,6 +79,24 @@ export function reduce(model: MessageModel, action: MessageAction): MessageModel
         }
         return ensureTextTail(segs, '');
       })();
+
+      // 文件创建工具：从 args 中提取代码内容，注入可见的代码块
+      const fileCreateTools = ['write_file', 'create_file', 'writeFile', 'createFile',
+        'write', 'save', 'save_file', 'saveFile', 'write_to_file', 'writeFileToWorkspace'];
+      try { console.log('[FSM:TOOL_HIT] tool:', action.tool, 'isFileCreate:', fileCreateTools.includes(action.tool), 'hasArgs:', !!action.args); } catch { /* noop */ }
+      if (fileCreateTools.includes(action.tool) && action.args) {
+        const filePath = (action.args as any).path || (action.args as any).file_path || (action.args as any).filePath || (action.args as any).filename || '';
+        const code = (action.args as any).content || (action.args as any).text || (action.args as any).code || (action.args as any).data || '';
+        if (code && String(code).trim().length > 0) {
+          const fileName = filePath ? String(filePath).replace(/\\/g, '/').split('/').pop() || filePath : 'file';
+          const ext = fileName.includes('.') ? fileName.split('.').pop() || '' : '';
+          const codeStr = String(code);
+          const fence = '```' + (ext || '') + '\n' + codeStr + '\n```';
+          // 在卡片之前插入代码块文本段
+          cleanedTail.push({ kind: 'text', text: fence } as any);
+        }
+      }
+
       const next = insertRunningCard(cleanedTail, {
         id: action.cardId,
         server: action.server,
@@ -86,7 +104,7 @@ export function reduce(model: MessageModel, action: MessageAction): MessageModel
         args: action.args,
         messageId: model.id,
       } as any);
-      
+
       return { ...model, segments: next as any, fsm: 'TOOL_RUNNING', detectingTool: false };
     }
     case 'TOOL_RESULT': {

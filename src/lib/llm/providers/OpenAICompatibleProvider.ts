@@ -96,7 +96,6 @@ export class OpenAICompatibleProvider extends BaseProvider {
     opts: Record<string, any> = {}
   ): Promise<void> {
     const apiKey = await this.getApiKey(model);
-    // 允许“无需密钥”的 Provider（例如 LM Studio）跳过密钥校验
     const requiresKey: boolean = (typeof (this as any).requiresKey === 'boolean') ? !!(this as any).requiresKey : true;
     if (requiresKey && !apiKey) {
       const err = new Error('NO_KEY');
@@ -107,7 +106,6 @@ export class OpenAICompatibleProvider extends BaseProvider {
     }
 
     const url = `${this.baseUrl.replace(/\/$/, '')}/chat/completions`;
-    // 过滤扩展字段（例如 mcpServers/extensions），只保留通用参数
     const { extensions: _extensions, mcpServers: _mcpServers, ...restOpts } = (opts as any) || {};
     const mapped: any = { ...restOpts };
     const o: any = opts as any;
@@ -125,169 +123,15 @@ export class OpenAICompatibleProvider extends BaseProvider {
     const body = {
       model,
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
-      stream: true,
       ...mapped,
+      stream: true,
     };
 
-    try {
-      this.aborted = false;
-      // 重置策略状态
-      this.thinkingStrategy.reset();
-      
-      // 优先：Tauri HTTP（跨域/证书更稳健）
-      let resp: any = null;
-      try {
-        const { tauriFetch } = await import('@/lib/request');
-        resp = await tauriFetch(url, {
-          method: 'POST',
-          rawResponse: true,
-          browserHeaders: true,
-          danger: { acceptInvalidCerts: true, acceptInvalidHostnames: true },
-          headers: (() => {
-            const h: Record<string, string> = {
-              'Content-Type': 'application/json',
-              'Accept': 'application/x-ndjson, application/json, text/event-stream',
-            };
-            if (apiKey) h.Authorization = `Bearer ${apiKey}`;
-            return h;
-          })(),
-          body,
-          debugTag: 'OpenAICompatStream',
-        });
-      } catch {
-        resp = null;
-      }
+    this.aborted = false;
+    this.thinkingStrategy.reset();
 
-      // 次选：浏览器 fetch
-      if (!resp) {
-        try {
-          resp = await fetch(url, {
-            method: 'POST',
-            headers: (() => {
-              const h: Record<string, string> = {
-                'Content-Type': 'application/json',
-                'Accept': 'application/x-ndjson, application/json, text/event-stream',
-              };
-              if (apiKey) h.Authorization = `Bearer ${apiKey}`;
-              return h;
-            })(),
-            body: JSON.stringify(body),
-          });
-        } catch {
-          resp = null;
-        }
-      }
-
-      if (!resp || !resp.ok) {
-        await this.startSSEFallback(url, apiKey || null, body, cb);
-        return;
-      }
-
-      const contentType = (resp.headers.get?.('Content-Type') || '').toLowerCase();
-      if (contentType.includes('text/event-stream')) {
-        await this.startSSEFallback(url, apiKey || null, body, cb);
-        return;
-      }
-
-      // NDJSON/JSON 流解析
-      cb.onStart?.();
-      const reader = resp.body?.getReader();
-      if (!reader) throw new Error('ReadableStream reader not available');
-      this.currentReader = reader;
-      const decoder = new TextDecoder('utf-8');
-      let buffer = '';
-      // —— 诊断：统计信息（便于判断是否“模型无输出”还是“解析丢失”）——
-      let rawLineCount = 0;
-      let parsedOkCount = 0;
-      let contentEmittedChars = 0;
-      const lastPayloadSamples: string[] = [];
-      const processDelta = (json: any) => {
-        if (!json) return;
-        // 1) 先提取内容（包含最终 message.content），避免因 finish_reason 过早 return 丢失末帧内容
-        const delta = json?.choices?.[0]?.delta ?? {};
-        const reasoningPiece = typeof delta.reasoning_content === 'string' ? delta.reasoning_content : undefined;
-        const contentPiece: string | undefined =
-          (typeof delta.content === 'string' ? delta.content : undefined) ||
-          (typeof json?.choices?.[0]?.message?.content === 'string' ? json.choices[0].message.content : undefined);
-        
-        let fullContent = '';
-        if (reasoningPiece) fullContent = `<think>${reasoningPiece}</think>`;
-        if (contentPiece) fullContent += contentPiece;
-        if (fullContent) {
-          const result = this.thinkingStrategy.processToken({ content: fullContent, done: false });
-          parsedOkCount++;
-          contentEmittedChars += fullContent.length;
-          this.dispatchEvents(result.events || [], cb);
-        }
-        // 2) 再处理结束信号
-        const isDone = json === '[DONE]' || json?.done === true || !!json?.choices?.[0]?.finish_reason;
-        if (isDone) {
-          const result = this.thinkingStrategy.processToken({ done: true });
-          this.dispatchEvents(result.events || [], cb, true);
-          cb.onComplete?.();
-          // —— 诊断输出：NDJSON 模式统计 —— 
-          try {
-            console.debug('[OpenAICompatibleProvider] NDJSON complete', {
-              rawLineCount,
-              parsedOkCount,
-              contentEmittedChars,
-              lastPayloadSamples,
-            });
-          } catch { /* noop */ }
-        }
-      };
-
-      while (true) {
-        if (this.aborted) {
-          try { await reader.cancel(); } catch { /* noop */ }
-          this.currentReader = null;
-          return;
-        }
-        const { value, done } = await reader.read();
-        if (done) {
-          const last = buffer.trim();
-          if (last) {
-            const payload = last.startsWith('data:') ? last.slice(5).trim() : last;
-            try { processDelta(JSON.parse(payload)); } catch { /* ignore */ }
-          }
-          const result = this.thinkingStrategy.processToken({ done: true });
-          this.dispatchEvents(result.events || [], cb, true);
-          cb.onComplete?.();
-          break;
-        }
-        buffer += decoder.decode(value, { stream: true });
-        let idx: number;
-        while ((idx = buffer.indexOf('\n')) >= 0) {
-          const line = buffer.slice(0, idx).trim();
-          buffer = buffer.slice(idx + 1);
-          if (!line || line === '[DONE]') { 
-            if (line === '[DONE]') { 
-              const result = this.thinkingStrategy.processToken({ done: true });
-              if (cb.onEvent && result.events && result.events.length > 0) {
-                result.events.forEach(event => cb.onEvent!(event));
-              } else if (cb.onToken && result.events && result.events.length > 0) {
-                const text = StreamEventAdapter.eventsToText(result.events);
-                if (text.length > 0) {
-                  cb.onToken(text);
-                }
-              }
-              
-              cb.onComplete?.();
-            } 
-            continue; 
-          }
-          rawLineCount++;
-          const payload = line.startsWith('data:') ? line.slice(5).trim() : line;
-          if (lastPayloadSamples.length < 6) {
-            lastPayloadSamples.push(payload.slice(0, 200));
-          }
-          try { processDelta(JSON.parse(payload)); } catch { /* ignore parse error */ }
-        }
-      }
-    } catch (error: any) {
-      console.error('[OpenAICompatibleProvider] stream error:', error);
-      cb.onError?.(error);
-    }
+    // 走 Rust SSE 后端（支持流式输出 + 自签证书）
+    await this.startSSEFallback(url, apiKey || null, body, cb);
   }
 
   /**
@@ -316,8 +160,10 @@ export class OpenAICompatibleProvider extends BaseProvider {
   ) {
     // 重置策略状态
     this.thinkingStrategy.reset();
-    
+    console.log('[OpenAICompat] SSE fallback starting, url:', url);
+
     try {
+      console.log('[OpenAICompat] calling sseClient.startConnection...');
       await this.sseClient.startConnection(
         {
           url,
@@ -328,14 +174,21 @@ export class OpenAICompatibleProvider extends BaseProvider {
             ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
           },
           body,
-          debugTag: 'OpenAICompatibleProvider',
+          debugTag: 'OpenAICompat',
         },
         {
-          onStart: cb.onStart,
-          onError: cb.onError,
+          onStart: () => {
+            console.log('[OpenAICompat] onStart callback');
+            cb.onStart?.();
+          },
+          onError: (err) => {
+            console.log('[OpenAICompat] onError callback:', err?.message || err);
+            cb.onError?.(err);
+          },
           onData: (rawData: string) => {
-            // —— 诊断：统计 —— 
-            // 注意：SSE 由后端拆“行”，这里统计的是每个 data 行
+            console.log('[OpenAICompat] onData:', rawData?.substring?.(0, 200) ?? rawData);
+            // —— 诊断：统计 ——
+            // 注意：SSE 由后端拆"行"，这里统计的是每个 data 行
             const payload = rawData.startsWith('data:') ? rawData.substring(5).trim() : rawData.trim();
             if (!payload) return;
             if (payload === '[DONE]') {
@@ -374,12 +227,13 @@ export class OpenAICompatibleProvider extends BaseProvider {
             }
           },
           onClose: () => {
-            try { console.debug('[OpenAICompatibleProvider] SSE closed'); } catch { /* noop */ }
+            console.log('[OpenAICompat] SSE closed');
           }
         }
       );
+      console.log('[OpenAICompat] sseClient.startConnection completed');
     } catch (error) {
-      console.error('[OpenAICompatibleProvider] SSE fallback failed:', error);
+      console.log('[OpenAICompat] SSE fallback exception:', error);
       cb.onError?.(error as any);
     }
   }

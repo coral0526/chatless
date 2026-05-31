@@ -7,6 +7,7 @@ import { getStaticModels } from "../staticModels";
 
 // 默认在全新安装时展示在 Provider 列表中的内置提供商
 const DEFAULT_VISIBLE_PROVIDER_NAMES = new Set<string>([
+  'OpenClawServer',
   'LM Studio',
   'Ollama',
   'DeepSeek',
@@ -33,6 +34,10 @@ export class ProviderInitializationService {
       if (res.ok) {
         const tokens: Record<string, string> = await res.json();
         defaultKey = tokens[p.name] ?? null;
+        // 将默认 token 写入 KeyManager，确保 getApiKey() 能读到
+        if (defaultKey && !existingConfig?.apiKey) {
+          try { await KeyManager.setProviderKey(p.name, defaultKey); } catch { /* ignore */ }
+        }
       }
     } catch { /* 文件不存在或读取失败，无默认 token */ }
     const apiKey = existingConfig?.apiKey ?? defaultKey ?? (requiresKey ? await KeyManager.getProviderKey(p.name) : null);

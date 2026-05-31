@@ -20,6 +20,16 @@ export interface CatalogProviderDef {
 
 // 可添加的 Provider 清单（本地 / 热门 / 常见网关优先，冷门靠后）
 export const AVAILABLE_PROVIDERS_CATALOG: CatalogProviderDef[] = [
+  // —— 师兄网关 ——
+  {
+    id: 'openclaw-server',
+    name: 'OpenClawServer',
+    strategy: 'openai-compatible',
+    requiresKey: true,
+    defaultUrl: 'https://openclaw.un-net.com:18789/v1',
+    staticModels: [{ id: 'openclaw', label: 'OpenClaw' }],
+  },
+
   // —— 本地 / 免密优先 ——
   { id: 'lmstudio', name: 'LM Studio', strategy: 'openai-compatible', requiresKey: false, defaultUrl: 'http://localhost:1234/v1' },
   { id: 'ollama', name: 'Ollama', strategy: 'ollama', requiresKey: false, defaultUrl: 'http://localhost:11434' },

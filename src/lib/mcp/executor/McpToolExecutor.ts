@@ -334,6 +334,9 @@ export class McpToolExecutor {
       cardId,
     });
 
+    // 文件创建工具：自动保存到下载目录
+    await this.autoSaveFileIfNeeded();
+
     const ToolCallOrchestrator = await import('../ToolCallOrchestrator');
     const continueWithToolResult = ToolCallOrchestrator.continueWithToolResult;
     await continueWithToolResult({
@@ -347,6 +350,58 @@ export class McpToolExecutor {
       tool: this.params.tool,
       result,
     });
+  }
+
+  /**
+   * 如果是文件创建类工具，自动将代码/文件内容保存到用户下载目录
+   */
+  private async autoSaveFileIfNeeded(): Promise<void> {
+    const fileCreateTools = ['write_file', 'create_file', 'writeFile', 'createFile',
+      'write', 'save', 'save_file', 'saveFile', 'write_to_file', 'writeFileToWorkspace'];
+
+    console.log('[autoSave] tool:', this.effectiveTool, 'args keys:', Object.keys(this.effectiveArgs || {}));
+
+    if (!fileCreateTools.includes(this.effectiveTool)) {
+      console.log('[autoSave] 跳过 - 不是文件创建工具:', this.effectiveTool);
+      return;
+    }
+
+    const args = this.effectiveArgs || {};
+    const code = (args as any).content || (args as any).text || (args as any).code || (args as any).data || '';
+    if (!code || String(code).trim().length === 0) return;
+
+    try {
+      const StorageUtil = (await import('@/lib/storage')).default;
+      const autoSave = await StorageUtil.getItem<boolean>("auto_save_code_blocks", true);
+      if (!autoSave) return;
+
+      let dir = await StorageUtil.getItem<string>("download_directory", "");
+      if (!dir || dir.length === 0) {
+        try {
+          const { documentDir } = await import('@tauri-apps/api/path');
+          const docDir = await documentDir();
+          dir = docDir.startsWith('/root') ? '/home/unnet/Desktop/Chatless' : `${docDir}/Chatless`;
+        } catch {
+          return;
+        }
+      }
+
+      const normalizedDir = dir.replace(/\\/g, '/').replace(/\/$/, '');
+      const { writeTextFile, mkdir, exists } = await import('@tauri-apps/plugin-fs');
+      try {
+        const dirExists = await exists(normalizedDir);
+        if (!dirExists) await mkdir(normalizedDir, { recursive: true });
+      } catch { /* ignore */ }
+
+      const filePath = (args as any).path || (args as any).file_path || (args as any).filePath || (args as any).filename || '';
+      const fileName = filePath ? String(filePath).replace(/\\/g, '/').split('/').pop() || 'file' : 'file';
+      const lang = fileName.includes('.') ? fileName.split('.').pop() || 'text' : 'text';
+      const slug = lang ? `${lang}_${Date.now()}` : `file_${Date.now()}`;
+      const rand = Math.random().toString(36).slice(2, 6);
+      const fullName = `${slug}_${rand}.${lang !== 'text' ? lang : 'txt'}`;
+      await writeTextFile(`${normalizedDir}/${fullName}`, String(code));
+      console.log('[autoSave] ✅ 已保存:', `${normalizedDir}/${fullName}`);
+    } catch (e) { console.log('[autoSave] ❌ 保存失败:', e); }
   }
 
   /**

@@ -82,12 +82,13 @@ export class SSEClient {
     try {
       // 调用开始回调
       callbacks.onStart?.();
-
-      console.debug(`[${debugTag}] start_sse URL:`, url);
-      console.debug(`[${debugTag}] start_sse Body:`, this.formatBodyForLog(body));
+      console.log(`[${debugTag}] startConnection() called, url:`, url);
 
       // 检查是否应该使用浏览器SSE方式
-      if (await shouldUseBrowserRequest(url, debugTag)) {
+      console.log(`[${debugTag}] checking shouldUseBrowserRequest...`);
+      const useBrowser = await shouldUseBrowserRequest(url, debugTag);
+      console.log(`[${debugTag}] shouldUseBrowserRequest result:`, useBrowser);
+      if (useBrowser) {
         await this.startBrowserSSE(config, callbacks);
         return;
       }
@@ -106,35 +107,21 @@ export class SSEClient {
         console.warn(`[${debugTag}] failed to read network preferences for proxy`, e);
       }
 
-      // 启动Tauri SSE连接
-      await invoke('start_sse', {
-        url,
-        method,
-        headers,
-        body,
-        // 注意：Tauri 参数名需要 snake_case
-        proxy_url
-      });
-
-      // 监听SSE事件 - 只传递原始数据，不进行任何解析
+      // 先注册所有事件监听器，再启动 Rust SSE，避免竞态丢事件
       const unlistenEvent = await listen<string>('sse-event', (e) => {
         const data = e.payload;
+        console.log(`[${debugTag}] SSE EVENT:`, data?.substring?.(0, 200) ?? data);
         if (!data) return;
-        // 若已停止或未连接，立即丢弃数据，避免晚到事件污染上层
         if (!this.isConnected || this.stopping) return;
-
-        // 直接传递原始数据给业务层处理
         callbacks.onData?.(data);
       });
 
-      // 监听SSE状态
       const unlistenStatus = await listen<string>('sse-status', (e) => {
-        console.debug(`[${debugTag}] SSE Status:`, e.payload);
+        console.log(`[${debugTag}] SSE STATUS:`, e.payload);
       });
 
-      // 监听SSE错误
       const unlistenError = await listen<string>('sse-error', (e) => {
-        console.error(`[${debugTag}] SSE Error:`, e.payload);
+        console.log(`[${debugTag}] SSE ERROR event received:`, e.payload);
         
         // 为HTTP 400错误提供更友好的提示
         let errorMessage = e.payload;
@@ -161,6 +148,18 @@ export class SSEClient {
 
       // 保存监听器
       this.unlisteners = [unlistenEvent, unlistenStatus, unlistenError];
+
+      // 监听器已就绪，现在启动 Rust SSE（竞态安全）
+      console.log(`[${debugTag}] invoking start_sse...`);
+      await invoke('start_sse', {
+        url,
+        method,
+        headers,
+        body,
+        proxy_url
+      });
+      console.log(`[${debugTag}] start_sse invoke returned OK`);
+
       this.isConnected = true;
 
       // 安全护栏：设置绝对超时（30分钟）防止连接无限悬挂

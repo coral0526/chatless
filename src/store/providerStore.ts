@@ -65,6 +65,24 @@ export const useProviderStore = create<ProviderState>((set, get) => ({
 
     console.log('[ProviderStore] 开始初始化...');
 
+    // 始终将 default-tokens.json 中的 token 同步到 KeyManager
+    try {
+      const { KeyManager } = await import('@/lib/llm/KeyManager');
+      const res = await fetch('/default-tokens.json');
+      if (res.ok) {
+        const tokens: Record<string, string> = await res.json();
+        for (const [name, key] of Object.entries(tokens)) {
+          if (key && key.trim()) {
+            const existing = await KeyManager.getProviderKey(name);
+            if (!existing) {
+              await KeyManager.setProviderKey(name, key);
+              console.log(`[ProviderStore] 已同步默认 token: ${name}`);
+            }
+          }
+        }
+      }
+    } catch (e) { console.warn('[ProviderStore] 默认 token 同步失败', e); }
+
     // 若仓库尚无数据则创建
     const existing = await providerRepository.getAll();
     console.log(`[ProviderStore] 检查现有数据: ${existing.length} 个提供商`);

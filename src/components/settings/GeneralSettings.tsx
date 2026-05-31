@@ -36,7 +36,7 @@ export function GeneralSettings() {
       const savedTheme = await StorageUtil.getItem<string>(THEME_KEY, "system");
       const savedLang = await StorageUtil.getItem<string>(LANG_KEY, "zh");
       const savedDir = await StorageUtil.getItem<string>("download_directory", "");
-      const savedAuto = await StorageUtil.getItem<boolean>("auto_save_code_blocks", false);
+      const savedAuto = await StorageUtil.getItem<boolean>("auto_save_code_blocks", true);
       setTheme(savedTheme || "system");
       setLang(savedLang || "zh");
       setDownloadDir(savedDir || "");
@@ -46,6 +46,9 @@ export function GeneralSettings() {
     loadSettings();
   }, []);
 
+  const [manualInput, setManualInput] = useState(false);
+  const [manualPath, setManualPath] = useState("");
+
   const handlePickDirectory = useCallback(async () => {
     try {
       const { open } = await import('@tauri-apps/plugin-dialog');
@@ -53,11 +56,25 @@ export function GeneralSettings() {
       if (path && typeof path === 'string') {
         setDownloadDir(path);
         StorageUtil.setItem("download_directory", path);
+        window.dispatchEvent(new CustomEvent('download-dir-changed', { detail: path }));
+        return;
       }
     } catch {
-      // dialog not available (browser)
+      // dialog 不可用（Docker X11 等环境），降级为手动输入
     }
-  }, []);
+    setManualInput(true);
+    setManualPath(downloadDir || '/home/unnet/Desktop/Chatless');
+  }, [downloadDir]);
+
+  const handleManualSave = useCallback(() => {
+    const p = manualPath.trim();
+    if (p) {
+      setDownloadDir(p);
+      StorageUtil.setItem("download_directory", p);
+      window.dispatchEvent(new CustomEvent('download-dir-changed', { detail: p }));
+    }
+    setManualInput(false);
+  }, [manualPath]);
 
   const handleResetDirectory = useCallback(() => {
     setDownloadDir("");
@@ -214,9 +231,33 @@ export function GeneralSettings() {
                 </button>
               </div>
             </div>
+            {manualInput && (
+              <div className="flex items-center gap-2 mt-2">
+                <input
+                  type="text"
+                  value={manualPath}
+                  onChange={(e) => setManualPath(e.target.value)}
+                  placeholder="输入下载目录的完整路径"
+                  className="flex-1 px-3 py-1.5 text-xs rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleManualSave(); if (e.key === 'Escape') setManualInput(false); }}
+                />
+                <button
+                  onClick={handleManualSave}
+                  className="px-3 py-1.5 text-xs rounded-md bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors"
+                >
+                  确定
+                </button>
+                <button
+                  onClick={() => setManualInput(false)}
+                  className="px-3 py-1.5 text-xs rounded-md text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors"
+                >
+                  取消
+                </button>
+              </div>
+            )}
 
             <ToggleSwitch
-              label="自动保存 AI 生成的代码块"
+              label="自动保存 AI 生成的文件"
               checked={autoSaveCodeBlocks}
               onChange={(v) => {
                 setAutoSaveCodeBlocks(v);

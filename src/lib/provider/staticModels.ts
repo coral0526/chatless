@@ -7,6 +7,12 @@ export interface StaticModelDef { id: string; label: string }
 // 使用数组对象字面量承载静态模型清单，避免使用 Record/Map
 export const STATIC_PROVIDER_MODELS = [
   {
+    providerName: "OpenClawServer",
+    models: [
+      { id: "openclaw", label: "OpenClaw" },
+    ]
+  },
+  {
     providerName: "DeepSeek",
     models: [
     { id: "deepseek-chat", label: "DeepSeek V3" },

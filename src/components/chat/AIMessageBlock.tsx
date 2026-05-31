@@ -16,6 +16,7 @@ import Fullscreen from 'yet-another-react-lightbox/plugins/fullscreen';
 import 'yet-another-react-lightbox/styles.css';
 import { downloadService } from '@/lib/utils/downloadService';
 import StorageUtil from '@/lib/storage';
+import { StreamingMarkdown } from './StreamingMarkdown';
 import { Download as DownloadIcon, Maximize2, Copy as CopyIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -81,48 +82,144 @@ export function AIMessageBlock({
     onStreamingCompleteRef.current = onStreamingComplete;
   }, [onStreamingComplete]);
 
-  // 自动保存代码块：流式结束后检测 content 中的 code fences 并直接保存
-  const autoSaveProcessedRef = useRef(false);
+  // 自动保存代码块：流式进行中增量检测 code fences 并保存
+  const savedBlockHashesRef = useRef<Set<number>>(new Set());
+  const lastDownloadDirRef = useRef<string>("");
+  const prevIsStreamingRef3 = useRef(isStreaming);
+  const [recheckTrigger, setRecheckTrigger] = useState(0);
+
   useEffect(() => {
-    if (isStreaming) {
-      autoSaveProcessedRef.current = false;
-      return;
+    // 新流式会话开始时清空去重集合
+    if (isStreaming && !prevIsStreamingRef3.current) {
+      savedBlockHashesRef.current.clear();
     }
-    if (autoSaveProcessedRef.current) return;
+    prevIsStreamingRef3.current = isStreaming;
+  }, [isStreaming]);
+
+  // 监听下载目录变化，触发已显示代码块的重新保存
+  useEffect(() => {
+    const handler = () => {
+      savedBlockHashesRef.current.clear();
+      setRecheckTrigger(prev => prev + 1);
+    };
+    window.addEventListener('download-dir-changed', handler);
+    return () => window.removeEventListener('download-dir-changed', handler);
+  }, []);
+
+  useEffect(() => {
     if (!content) return;
 
-    autoSaveProcessedRef.current = true;
     (async () => {
       try {
-        const autoSave = await StorageUtil.getItem<boolean>("auto_save_code_blocks", false);
+        const autoSave = await StorageUtil.getItem<boolean>("auto_save_code_blocks", true);
         if (!autoSave) return;
-        const dir = await StorageUtil.getItem<string>("download_directory", "");
-        if (!dir) return;
 
-        // 仅当目录在 Tauri FS scope 内时才直接写入
-        const allowedRoots = ['$DOWNLOAD', '$DESKTOP', '$DOCUMENT', '$APPDATA'];
-        const isInScope = allowedRoots.some(() => {
-          // 简单检查：目录非空且在系统可写位置
-          return dir.length > 0;
-        });
-        if (!isInScope) return;
+        let dir = await StorageUtil.getItem<string>("download_directory", "");
+        if (!dir || dir.length === 0) {
+          try {
+            const { documentDir } = await import('@tauri-apps/api/path');
+            const docDir = await documentDir();
+            dir = docDir.startsWith('/root') ? '/home/unnet/Desktop/Chatless' : `${docDir}/Chatless`;
+            await StorageUtil.setItem("download_directory", dir);
+          } catch {
+            return;
+          }
+        }
 
-        const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+        // 目录变化时清空去重，确保文件重新保存到新路径
+        const normalizedDir = dir.replace(/\\/g, '/').replace(/\/$/, '');
+        if (lastDownloadDirRef.current && lastDownloadDirRef.current !== normalizedDir) {
+          savedBlockHashesRef.current.clear();
+        }
+        lastDownloadDirRef.current = normalizedDir;
+
+        const { writeTextFile, mkdir, exists } = await import('@tauri-apps/plugin-fs');
+        try {
+          const dirExists = await exists(normalizedDir);
+          if (!dirExists) await mkdir(normalizedDir, { recursive: true });
+        } catch { /* ignore - dir might already exist */ }
+
         const fenceRegex = /```(\w*)\n([\s\S]*?)```/g;
+        const minSize = isStreaming ? 60 : 20;
         let match;
+
+        const extMap: Record<string, string> = { js: '.js', ts: '.ts', tsx: '.tsx', jsx: '.jsx', py: '.py', rs: '.rs', go: '.go', java: '.java', c: '.c', cpp: '.cpp', h: '.h', html: '.html', css: '.css', json: '.json', yaml: '.yml', yml: '.yml', md: '.md', sql: '.sql', sh: '.sh', bash: '.sh', toml: '.toml', ini: '.ini', cfg: '.cfg', env: '.env', xml: '.xml', svg: '.svg', dockerfile: '.dockerfile', php: '.php', rb: '.rb', lua: '.lua', swift: '.swift', kt: '.kt', scala: '.scala', r: '.r', m: '.m' };
+
+        const saveBlock = async (code: string, lang: string) => {
+          if (!code || code.length < minSize) return;
+          const blockHash = code.split('').reduce((h, c) => { h = ((h << 5) - h) + c.charCodeAt(0); return h | 0; }, 0);
+          if (savedBlockHashesRef.current.has(blockHash)) return;
+          savedBlockHashesRef.current.add(blockHash);
+          const ext = extMap[lang.toLowerCase()] || `.${lang}`;
+          const slug = lang ? `${lang}_${Date.now()}` : `code_${Date.now()}`;
+          const rand = Math.random().toString(36).slice(2, 6);
+          const fileName = `${slug}_${rand}${ext}`;
+          try { await writeTextFile(`${normalizedDir}/${fileName}`, code); console.log('[autoSave:block] ✅', `${normalizedDir}/${fileName}`); } catch { /* skip */ }
+        };
+
+        // 1) 标准 markdown 代码块
         while ((match = fenceRegex.exec(content)) !== null) {
-          const lang = match[1] || 'text';
-          const code = match[2].trimEnd();
-          if (!code) continue;
-          const extMap: Record<string, string> = { js: '.js', ts: '.ts', py: '.py', rs: '.rs', go: '.go', java: '.java', c: '.c', cpp: '.cpp', html: '.html', css: '.css', json: '.json', yaml: '.yml', md: '.md', sql: '.sql', sh: '.sh' };
-          const ext = extMap[lang] || '.txt';
-          const fileName = `${lang}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`;
-          const fullPath = `${dir.replace(/\\/g, '/').replace(/\/$/, '')}/${fileName}`;
-          try { await writeTextFile(fullPath, code); } catch { /* skip */ }
+          await saveBlock(match[2].trimEnd(), match[1] || 'text');
+        }
+
+        // 2) MCP 工具调用中的文件创建（write_file / create_file）
+        const toolXmlRegex = /<use_mcp_tool>([\s\S]*?)<\/use_mcp_tool>/gi;
+        while ((match = toolXmlRegex.exec(content)) !== null) {
+          try {
+            const inner = match[1];
+            const toolNameMatch = inner.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
+            const toolName = toolNameMatch ? toolNameMatch[1].trim() : '';
+            const fileCreateTools = ['write_file', 'create_file', 'writeFile', 'createFile',
+              'write', 'save', 'save_file', 'saveFile', 'write_to_file', 'writeFileToWorkspace'];
+            if (!fileCreateTools.includes(toolName)) continue;
+
+            const argsMatch = inner.match(/<arguments>([\s\S]*?)<\/arguments>/i);
+            if (!argsMatch) continue;
+            const argsJson = argsMatch[1].trim();
+            const args = JSON.parse(argsJson);
+            const code = args.content || args.text || args.code || args.data || '';
+            const filePath = args.path || args.file_path || args.filePath || args.filename || '';
+            if (code && String(code).trim().length > minSize) {
+              const fileName = filePath ? String(filePath).replace(/\\/g, '/').split('/').pop() || 'file' : 'file';
+              const lang = fileName.includes('.') ? fileName.split('.').pop() || 'text' : 'text';
+              await saveBlock(String(code).trimEnd(), lang);
+            }
+          } catch { /* skip malformed tool XML */ }
         }
       } catch { /* silent */ }
     })();
-  }, [isStreaming, content]);
+  }, [isStreaming, content, recheckTrigger]);
+
+  // 自动保存图片段
+  const savedImageHashesRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const imageSegs = (segments || []).filter((s: any) => s?.kind === 'image') as any[];
+    if (!imageSegs.length) return;
+    (async () => {
+      try {
+        const autoSave = await StorageUtil.getItem<boolean>("auto_save_code_blocks", true);
+        if (!autoSave) return;
+        const dir = await StorageUtil.getItem<string>("download_directory", "");
+        if (!dir) return;
+        const normalizedDir = dir.replace(/\\/g, '/').replace(/\/$/, '');
+        const { writeFile } = await import('@tauri-apps/plugin-fs');
+        for (const img of imageSegs) {
+          if (!img?.data) continue;
+          const hash = String(img.data).slice(0, 100).split('').reduce((h: number, c: string) => { h = ((h << 5) - h) + c.charCodeAt(0); return h | 0; }, 0);
+          if (savedImageHashesRef.current.has(hash)) continue;
+          savedImageHashesRef.current.add(hash);
+          const ext = (img.mimeType || 'image/png').split('/')[1] || 'png';
+          const fileName = `image_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.${ext}`;
+          try {
+            const binaryStr = atob(img.data);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+            await writeFile(`${normalizedDir}/${fileName}`, bytes);
+          } catch { /* skip */ }
+        }
+      } catch { /* silent */ }
+    })();
+  }, [segments]);
 
   // 检查内容是否包含think标签 - 只要检测到<think>就开始显示思考栏
   const hasThinkTags = useMemo(() => content.includes('<think>'), [content]);
@@ -526,11 +623,7 @@ export function AIMessageBlock({
                 return (
                   <div key={`md-wrap-${idx}`} className={needSoftDivider ? 'pt-3 border-t border-dashed border-slate-200/60 dark:border-slate-700/60' : undefined}>
                     <div className="markdown-content-area">
-                      {(() => {
-                        // 使用统一的StreamingMarkdown组件，支持流式和非流式markdown渲染
-                        const { StreamingMarkdown } = require('./StreamingMarkdown');
-                        return <StreamingMarkdown content={textContent} isStreaming={isStreaming} />;
-                      })()}
+                      <StreamingMarkdown content={textContent} isStreaming={isStreaming} />
                     </div>
                   </div>
                 );
@@ -545,10 +638,7 @@ export function AIMessageBlock({
                   return (
                     <div key="md-fallback" className="pt-3 border-t border-dashed border-slate-200/60 dark:border-slate-700/60">
                       <div className="markdown-content-area">
-                        {(() => {
-                          const { StreamingMarkdown } = require('./StreamingMarkdown');
-                          return <StreamingMarkdown content={fallbackTextCleaned} isStreaming={isStreaming} />;
-                        })()}
+                        <StreamingMarkdown content={fallbackTextCleaned} isStreaming={isStreaming} />
                       </div>
                     </div>
                   );

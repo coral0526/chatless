@@ -193,10 +193,11 @@ impl HttpClientManager {
   fn build_minimal_client() -> Result<Client, reqwest::Error> {
     Client::builder()
       .timeout(Duration::from_secs(120))
-      .connect_timeout(Duration::from_millis(30000))
+      .connect_timeout(Duration::from_millis(10000))
       .http1_only()
       .no_gzip()
       .no_brotli()
+      .danger_accept_invalid_certs(true)
       .build()
   }
 

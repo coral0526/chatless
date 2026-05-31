@@ -130,7 +130,12 @@ export const useChatActions = (selectedModelId: string | null, currentProviderNa
       if (providerKey && providerKey.trim()) {
         return true;
       }
-      
+
+      // 回退：检查 entity 中存储的 apiKey（从 default-tokens.json 或其他来源写入）
+      if (provider.apiKey && provider.apiKey.trim()) {
+        return true;
+      }
+
       return false;
     } catch (error) {
       console.error('Error checking API key validity:', error);

@@ -263,9 +263,11 @@ export class StreamOrchestrator {
     // - 现在改为仅根据本轮是否触发过工具调用来决定是否兜底：
     //   只要本轮未触发（toolStarted=false），就允许针对本轮累积的 content 再做一次解析，
     //   不再关心历史 segments 中是否已经存在旧卡片。
+    try { console.log('[Orchestrator:complete] toolStarted:', this.context.toolStarted, 'contentLen:', originalContent?.length, 'hasUseMcp:', /<use_mcp_tool/i.test(originalContent || '')); } catch { /* noop */ }
     if (!this.context.toolStarted) {
       const parsed = extractToolCallFromText(originalContent);
-      
+      try { console.log('[Orchestrator:complete] parsed:', parsed?.server, parsed?.tool); } catch { /* noop */ }
+
       if (parsed && parsed.server && parsed.tool) {
         // 创建工具卡（通过状态机），但不再把标记注入到 content，避免正文出现 JSON 残片
         const cardId = crypto.randomUUID();
