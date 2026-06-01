@@ -17,7 +17,7 @@ import 'yet-another-react-lightbox/styles.css';
 import { downloadService } from '@/lib/utils/downloadService';
 import StorageUtil from '@/lib/storage';
 import { StreamingMarkdown } from './StreamingMarkdown';
-import { Download as DownloadIcon, Maximize2, Copy as CopyIcon } from 'lucide-react';
+import { Download as DownloadIcon, Maximize2, Copy as CopyIcon, FolderOpen, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface AIMessageBlockProps {
@@ -82,6 +82,31 @@ export function AIMessageBlock({
     onStreamingCompleteRef.current = onStreamingComplete;
   }, [onStreamingComplete]);
 
+  // 从纯文本中解析文件描述，如 "已创建 `output.txt`，内容为 `123`"
+  // 仅在明确表示文件创建时才提取，避免误伤提及文件名的对话
+  const parseTextFileDescriptions = (text: string): { fileName: string; content: string }[] => {
+    const results: { fileName: string; content: string }[] = [];
+    const createKeywords = /(?:已创建|已生成|创建了|生成了|文件已保存|写入文件|保存到)\s*/;
+    const fileNameRegex = /`([^`]+\.\w{1,10})`/g;
+    let fnMatch;
+    while ((fnMatch = fileNameRegex.exec(text)) !== null) {
+      const fileName = fnMatch[1].trim();
+      const beforeFn = text.slice(Math.max(0, fnMatch.index - 30), fnMatch.index);
+      // 只有文件名前面有关键词时才认为这是文件创建
+      if (!createKeywords.test(beforeFn)) continue;
+      const afterFn = text.slice(fnMatch.index + fnMatch[0].length);
+      // 找文件名后的反引号内容
+      const ctMatch = /`([^`]{1,50000})`/.exec(afterFn);
+      if (ctMatch) {
+        const content = ctMatch[1].trim();
+        if (content.length > 0) {
+          results.push({ fileName, content });
+        }
+      }
+    }
+    return results;
+  };
+
   // 自动保存代码块：流式进行中增量检测 code fences 并保存
   const savedBlockHashesRef = useRef<Set<number>>(new Set());
   const lastDownloadDirRef = useRef<string>("");
@@ -107,12 +132,24 @@ export function AIMessageBlock({
   }, []);
 
   useEffect(() => {
-    if (!content) return;
+    if (!content && !segments?.length) return;
 
     (async () => {
       try {
         const autoSave = await StorageUtil.getItem<boolean>("auto_save_code_blocks", true);
         if (!autoSave) return;
+
+        // 合并 content 和 segments 中的文本，确保 FSM 注入的代码块也能被检测到
+        const scanText = (() => {
+          const parts: string[] = [];
+          if (content) parts.push(content);
+          if (segments) {
+            for (const s of segments) {
+              if (s.kind === 'text' && (s as any).text) parts.push((s as any).text);
+            }
+          }
+          return parts.join('\n');
+        })();
 
         let dir = await StorageUtil.getItem<string>("download_directory", "");
         if (!dir || dir.length === 0) {
@@ -140,7 +177,7 @@ export function AIMessageBlock({
         } catch { /* ignore - dir might already exist */ }
 
         const fenceRegex = /```(\w*)\n([\s\S]*?)```/g;
-        const minSize = isStreaming ? 60 : 20;
+        const minSize = 0; // 不限制最小长度，短内容如 "123" 也保存
         let match;
 
         const extMap: Record<string, string> = { js: '.js', ts: '.ts', tsx: '.tsx', jsx: '.jsx', py: '.py', rs: '.rs', go: '.go', java: '.java', c: '.c', cpp: '.cpp', h: '.h', html: '.html', css: '.css', json: '.json', yaml: '.yml', yml: '.yml', md: '.md', sql: '.sql', sh: '.sh', bash: '.sh', toml: '.toml', ini: '.ini', cfg: '.cfg', env: '.env', xml: '.xml', svg: '.svg', dockerfile: '.dockerfile', php: '.php', rb: '.rb', lua: '.lua', swift: '.swift', kt: '.kt', scala: '.scala', r: '.r', m: '.m' };
@@ -158,13 +195,13 @@ export function AIMessageBlock({
         };
 
         // 1) 标准 markdown 代码块
-        while ((match = fenceRegex.exec(content)) !== null) {
+        while ((match = fenceRegex.exec(scanText)) !== null) {
           await saveBlock(match[2].trimEnd(), match[1] || 'text');
         }
 
         // 2) MCP 工具调用中的文件创建（write_file / create_file）
         const toolXmlRegex = /<use_mcp_tool>([\s\S]*?)<\/use_mcp_tool>/gi;
-        while ((match = toolXmlRegex.exec(content)) !== null) {
+        while ((match = toolXmlRegex.exec(scanText)) !== null) {
           try {
             const inner = match[1];
             const toolNameMatch = inner.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
@@ -179,16 +216,145 @@ export function AIMessageBlock({
             const args = JSON.parse(argsJson);
             const code = args.content || args.text || args.code || args.data || '';
             const filePath = args.path || args.file_path || args.filePath || args.filename || '';
-            if (code && String(code).trim().length > minSize) {
+            if (code && String(code).trim().length > 0) {
               const fileName = filePath ? String(filePath).replace(/\\/g, '/').split('/').pop() || 'file' : 'file';
               const lang = fileName.includes('.') ? fileName.split('.').pop() || 'text' : 'text';
               await saveBlock(String(code).trimEnd(), lang);
             }
           } catch { /* skip malformed tool XML */ }
         }
+
+        // 3) 流式结束后：纯文本文件描述（需有关键词）
+        if (!isStreaming) {
+          const textFileMatches = parseTextFileDescriptions(scanText);
+          for (const { fileName, content: fileContent } of textFileMatches) {
+            if (fileContent && String(fileContent).trim().length > 0) {
+              const hash = (fileName + fileContent).split('').reduce((h, c) => { h = ((h << 5) - h) + c.charCodeAt(0); return h | 0; }, 0);
+              if (savedBlockHashesRef.current.has(hash)) continue;
+              savedBlockHashesRef.current.add(hash);
+              try {
+                await writeTextFile(`${normalizedDir}/${fileName}`, String(fileContent).trimEnd());
+                console.log('[autoSave:text] ✅', `${normalizedDir}/${fileName}`);
+              } catch { /* skip */ }
+            }
+          }
+        }
       } catch { /* silent */ }
     })();
   }, [isStreaming, content, recheckTrigger]);
+
+  const handleSetDownloadDir = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const path = await open({ directory: true, multiple: false, title: '选择下载保存目录' });
+      if (path && typeof path === 'string') {
+        await StorageUtil.setItem('download_directory', path);
+        await StorageUtil.setItem('auto_save_code_blocks', true);
+        window.dispatchEvent(new CustomEvent('download-dir-changed', { detail: path }));
+      }
+    } catch {
+      const manual = window.prompt('原生对话框不可用，请手动输入下载目录的完整路径：', '/home/unnet/Desktop/Chatless');
+      if (manual && manual.trim()) {
+        await StorageUtil.setItem('download_directory', manual.trim());
+        await StorageUtil.setItem('auto_save_code_blocks', true);
+        window.dispatchEvent(new CustomEvent('download-dir-changed', { detail: manual.trim() }));
+      }
+    }
+  };
+
+  const handleSaveContent = async () => {
+    let dir = await StorageUtil.getItem<string>("download_directory", "");
+    if (!dir) {
+      // 没有设置目录，先让用户选
+      try {
+        const { open } = await import('@tauri-apps/plugin-dialog');
+        const path = await open({ directory: true, multiple: false, title: '选择下载保存目录' });
+        if (path && typeof path === 'string') {
+          dir = path;
+          await StorageUtil.setItem('download_directory', dir);
+        }
+      } catch { }
+      if (!dir) {
+        const manual = window.prompt('请先设置下载目录：', '/home/unnet/Desktop/Chatless');
+        if (manual && manual.trim()) {
+          dir = manual.trim();
+          await StorageUtil.setItem('download_directory', dir);
+        }
+      }
+      if (!dir) return;
+    }
+
+    const normalizedDir = dir.replace(/\\/g, '/').replace(/\/$/, '');
+    const { writeTextFile, mkdir, exists } = await import('@tauri-apps/plugin-fs');
+    try { const de = await exists(normalizedDir); if (!de) await mkdir(normalizedDir, { recursive: true }); } catch { }
+
+    // 合并 content 和 segments 的文本
+    const scanText = (() => {
+      const parts: string[] = [];
+      if (content) parts.push(content);
+      if (segments) {
+        for (const s of segments) {
+          if (s.kind === 'text' && (s as any).text) parts.push((s as any).text);
+        }
+      }
+      return parts.join('\n');
+    })();
+
+    const extMap: Record<string, string> = { js: '.js', ts: '.ts', tsx: '.tsx', jsx: '.jsx', py: '.py', rs: '.rs', go: '.go', java: '.java', c: '.c', cpp: '.cpp', html: '.html', css: '.css', json: '.json', yaml: '.yml', yml: '.yml', md: '.md', sql: '.sql', sh: '.sh', toml: '.toml', xml: '.xml', txt: '.txt' };
+    let savedCount = 0;
+
+    // 1) 标准 markdown 代码块
+    const fenceRegex = /```(\w*)\n([\s\S]*?)```/g;
+    let match;
+    while ((match = fenceRegex.exec(scanText)) !== null) {
+      const lang = match[1] || 'text';
+      const code = match[2].trimEnd();
+      if (!code) continue;
+      const ext = extMap[lang.toLowerCase()] || `.${lang}`;
+      const fileName = `${lang}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`;
+      await writeTextFile(`${normalizedDir}/${fileName}`, code);
+      savedCount++;
+    }
+
+    // 2) MCP 工具调用
+    const toolXmlRegex = /<use_mcp_tool>([\s\S]*?)<\/use_mcp_tool>/gi;
+    while ((match = toolXmlRegex.exec(scanText)) !== null) {
+      try {
+        const inner = match[1];
+        const tn = inner.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
+        const toolName = tn ? tn[1].trim() : '';
+        const ft = ['write_file', 'create_file', 'writeFile', 'createFile', 'write', 'save', 'save_file', 'saveFile', 'write_to_file', 'writeFileToWorkspace'];
+        if (!ft.includes(toolName)) continue;
+        const am = inner.match(/<arguments>([\s\S]*?)<\/arguments>/i);
+        if (!am) continue;
+        const args = JSON.parse(am[1].trim());
+        const code = args.content || args.text || args.code || args.data || '';
+        const fp = args.path || args.file_path || args.filePath || args.filename || '';
+        if (code && String(code).trim()) {
+          const fname = fp ? String(fp).replace(/\\/g, '/').split('/').pop() || 'file' : `file_${Date.now()}.txt`;
+          await writeTextFile(`${normalizedDir}/${fname}`, String(code).trimEnd());
+          savedCount++;
+        }
+      } catch { }
+    }
+
+    // 3) 纯文本文件描述
+    const textFileMatches = parseTextFileDescriptions(scanText);
+    for (const { fileName, content: fileContent } of textFileMatches) {
+      if (fileContent && String(fileContent).trim().length > 0) {
+        await writeTextFile(`${normalizedDir}/${fileName}`, String(fileContent).trimEnd());
+        savedCount++;
+      }
+    }
+
+    // 4) 没有可保存的文件内容
+    if (savedCount === 0) {
+      try { const { toast: t } = await import('@/components/ui/sonner'); t.info('未检测到可保存的文件内容'); } catch { }
+      return;
+    }
+
+    try { const { toast: t } = await import('@/components/ui/sonner'); t.success(`已保存 ${savedCount} 个文件到 ${normalizedDir}`); } catch { }
+  };
 
   // 自动保存图片段
   const savedImageHashesRef = useRef<Set<number>>(new Set());
@@ -461,6 +627,27 @@ export function AIMessageBlock({
   return (
     <div className="ai-markdown-container group w-full max-w-full min-w-0">
    
+      {/* 消息操作栏 - 悬停时显示 */}
+      {!hasNoContent && (
+        <div className="flex items-center gap-1 mb-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <button
+            onClick={handleSetDownloadDir}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+            title="选择下载目录"
+          >
+            <FolderOpen className="w-3 h-3" />
+          </button>
+          <button
+            onClick={handleSaveContent}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            title="保存到下载目录"
+          >
+            <Save className="w-3 h-3" />
+            保存
+          </button>
+        </div>
+      )}
+
       {/* 初始加载状态 - 当AI还没有任何响应时显示 */}
       {hasNoContent && (
         <div key="loader-waiting" className="flex items-center gap-3 py-2">
