@@ -70,7 +70,7 @@ export const DEFAULT_KNOWLEDGE_BASE_CONFIG: KnowledgeBaseConfig = {
     chunkSize: 1000,
     chunkOverlap: 200,
     enableOCR: false,
-    autoAttachDocumentPreview: false,
+    autoAttachDocumentPreview: true,
     previewTokenLimit: 6000,
     previewKeepTailRatio: 0.2,
     bigFileSizeMb: 2,

@@ -515,13 +515,15 @@ export function ChatInput({
       // 退出编辑模式
       onCancelEdit?.();
     } else if (attachedDocument) {
-      // 可选：自动拼接文档预览到提示词
       let contentToSend = userMessage;
+      let docContextData = attachedDocument.content;
       try {
         const cfg = getCurrentKnowledgeBaseConfig();
         if (cfg.documentProcessing.autoAttachDocumentPreview) {
           const { preview } = createSafePreview(attachedDocument.content, cfg.documentProcessing.previewTokenLimit);
-          contentToSend = `${userMessage}\n\n[Document Preview]\n${preview}`;
+          // 预览内容放入 contextData，经由 HistoryBuilder 的 [Document Context] 传给 AI
+          // 聊天界面只显示用户原文，不显示 [Attached Document: ...] 标签
+          docContextData = `[Attached Document: ${attachedDocument.name}]\n${preview}\n\n[以上是用户上传的文档全文，请直接基于此内容回答，不需要使用任何文件读取工具去查找该文件。]`;
         }
       } catch { /* noop */ }
 
@@ -532,7 +534,7 @@ export function ChatInput({
           fileSize: attachedDocument.fileSize,
           summary: attachedDocument.summary
         },
-        contextData: attachedDocument.content
+        contextData: docContextData
       }, selectedKnowledgeBase ? { id: selectedKnowledgeBase.id, name: selectedKnowledgeBase.name } : undefined);
     } else {
       // 普通消息，如果有选中的知识库则传递

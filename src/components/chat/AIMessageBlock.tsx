@@ -126,39 +126,25 @@ export function AIMessageBlock({
     return parseTextFileDescriptions(scanText);
   }, [isStreaming, content, segments]);
 
-  // 自动保存代码块：流式进行中增量检测 code fences 并保存
-  const savedBlockHashesRef = useRef<Set<number>>(new Set());
-  const lastDownloadDirRef = useRef<string>("");
-  const prevIsStreamingRef3 = useRef(isStreaming);
-  const [recheckTrigger, setRecheckTrigger] = useState(0);
+  // 自动保存代码块：内容 hash 持久化按目录去重，切换对话/删文件不再重复下载
+  const saveInProgressRef = useRef(false);
 
-  useEffect(() => {
-    // 新流式会话开始时清空去重集合
-    if (isStreaming && !prevIsStreamingRef3.current) {
-      savedBlockHashesRef.current.clear();
-    }
-    prevIsStreamingRef3.current = isStreaming;
-  }, [isStreaming]);
-
-  // 监听下载目录变化，触发已显示代码块的重新保存
-  useEffect(() => {
-    const handler = () => {
-      savedBlockHashesRef.current.clear();
-      setRecheckTrigger(prev => prev + 1);
-    };
-    window.addEventListener('download-dir-changed', handler);
-    return () => window.removeEventListener('download-dir-changed', handler);
-  }, []);
+  const hashContent = (s: string): string => {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
+    return (h >>> 0).toString(36);
+  };
 
   useEffect(() => {
     if (!content && !segments?.length) return;
+    if (saveInProgressRef.current) return;
 
     (async () => {
+      saveInProgressRef.current = true;
       try {
         const autoSave = await StorageUtil.getItem<boolean>("auto_save_code_blocks", true);
         if (!autoSave) return;
 
-        // 合并 content 和 segments 中的文本，确保 FSM 注入的代码块也能被检测到
         const scanText = (() => {
           const parts: string[] = [];
           if (content) parts.push(content);
@@ -182,40 +168,45 @@ export function AIMessageBlock({
           }
         }
 
-        // 目录变化时清空去重，确保文件重新保存到新路径
         const normalizedDir = dir.replace(/\\/g, '/').replace(/\/$/, '');
-        if (lastDownloadDirRef.current && lastDownloadDirRef.current !== normalizedDir) {
-          savedBlockHashesRef.current.clear();
-        }
-        lastDownloadDirRef.current = normalizedDir;
+        const hashesKey = `auto_save_hashes_${hashContent(normalizedDir)}`;
+        const stored = await StorageUtil.getItem<string[]>(hashesKey, []);
+        const savedHashes = new Set(stored || []);
+        const newHashes: string[] = [];
 
         const { writeTextFile, mkdir, exists } = await import('@tauri-apps/plugin-fs');
         try {
           const dirExists = await exists(normalizedDir);
           if (!dirExists) await mkdir(normalizedDir, { recursive: true });
-        } catch { /* ignore - dir might already exist */ }
-
-        const fenceRegex = /```(\w*)\n([\s\S]*?)```/g;
-        const minSize = 0; // 不限制最小长度，短内容如 "123" 也保存
-        let match;
+        } catch { /* ignore */ }
 
         const extMap: Record<string, string> = { js: '.js', ts: '.ts', tsx: '.tsx', jsx: '.jsx', py: '.py', rs: '.rs', go: '.go', java: '.java', c: '.c', cpp: '.cpp', h: '.h', html: '.html', css: '.css', json: '.json', yaml: '.yml', yml: '.yml', md: '.md', sql: '.sql', sh: '.sh', bash: '.sh', toml: '.toml', ini: '.ini', cfg: '.cfg', env: '.env', xml: '.xml', svg: '.svg', dockerfile: '.dockerfile', php: '.php', rb: '.rb', lua: '.lua', swift: '.swift', kt: '.kt', scala: '.scala', r: '.r', m: '.m' };
 
-        const saveBlock = async (code: string, lang: string) => {
-          if (!code || code.length < minSize) return;
-          const blockHash = code.split('').reduce((h, c) => { h = ((h << 5) - h) + c.charCodeAt(0); return h | 0; }, 0);
-          if (savedBlockHashesRef.current.has(blockHash)) return;
-          savedBlockHashesRef.current.add(blockHash);
-          const ext = extMap[lang.toLowerCase()] || `.${lang}`;
-          const slug = lang ? `${lang}_${Date.now()}` : `code_${Date.now()}`;
-          const rand = Math.random().toString(36).slice(2, 6);
-          const fileName = `${slug}_${rand}${ext}`;
-          try { await writeTextFile(`${normalizedDir}/${fileName}`, code); console.log('[autoSave:block] ✅', `${normalizedDir}/${fileName}`); } catch { /* skip */ }
+        const trySave = async (code: string, lang: string, preferredName?: string) => {
+          if (!code || code.length === 0) return;
+          const h = hashContent(code);
+          if (savedHashes.has(h)) return;
+          savedHashes.add(h);
+          newHashes.push(h);
+          let fileName: string;
+          if (preferredName) {
+            fileName = preferredName;
+          } else {
+            const ext = extMap[lang.toLowerCase()] || `.${lang}`;
+            fileName = `code_${h.slice(0, 8)}${ext}`;
+          }
+          try {
+            await writeTextFile(`${normalizedDir}/${fileName}`, code);
+            console.log('[autoSave] ✅', `${normalizedDir}/${fileName}`);
+          } catch { /* skip */ }
         };
 
+        let match;
+
         // 1) 标准 markdown 代码块
+        const fenceRegex = /```(\w*)\n([\s\S]*?)```/g;
         while ((match = fenceRegex.exec(scanText)) !== null) {
-          await saveBlock(match[2].trimEnd(), match[1] || 'text');
+          await trySave(match[2].trimEnd(), match[1] || 'text');
         }
 
         // 2) MCP 工具调用中的文件创建（write_file / create_file）
@@ -231,14 +222,13 @@ export function AIMessageBlock({
 
             const argsMatch = inner.match(/<arguments>([\s\S]*?)<\/arguments>/i);
             if (!argsMatch) continue;
-            const argsJson = argsMatch[1].trim();
-            const args = JSON.parse(argsJson);
+            const args = JSON.parse(argsMatch[1].trim());
             const code = args.content || args.text || args.code || args.data || '';
             const filePath = args.path || args.file_path || args.filePath || args.filename || '';
             if (code && String(code).trim().length > 0) {
-              const fileName = filePath ? String(filePath).replace(/\\/g, '/').split('/').pop() || 'file' : 'file';
-              const lang = fileName.includes('.') ? fileName.split('.').pop() || 'text' : 'text';
-              await saveBlock(String(code).trimEnd(), lang);
+              const lang = filePath.includes('.') ? filePath.split('.').pop() || 'text' : 'text';
+              const fname = filePath ? String(filePath).replace(/\\/g, '/').split('/').pop() || undefined : undefined;
+              await trySave(String(code).trimEnd(), lang, fname);
             }
           } catch { /* skip malformed tool XML */ }
         }
@@ -248,36 +238,45 @@ export function AIMessageBlock({
           const textFileMatches = parseTextFileDescriptions(scanText);
           for (const { fileName, content: fileContent } of textFileMatches) {
             if (fileContent && String(fileContent).trim().length > 0) {
-              const hash = (fileName + fileContent).split('').reduce((h, c) => { h = ((h << 5) - h) + c.charCodeAt(0); return h | 0; }, 0);
-              if (savedBlockHashesRef.current.has(hash)) continue;
-              savedBlockHashesRef.current.add(hash);
-              try {
-                await writeTextFile(`${normalizedDir}/${fileName}`, String(fileContent).trimEnd());
-                console.log('[autoSave:text] ✅', `${normalizedDir}/${fileName}`);
-              } catch { /* skip */ }
+              const lang = fileName.includes('.') ? fileName.split('.').pop() || 'text' : 'text';
+              await trySave(String(fileContent).trimEnd(), lang, fileName);
             }
           }
         }
-      } catch { /* silent */ }
-    })();
-  }, [isStreaming, content, recheckTrigger]);
 
-  const handleSetDownloadDir = async () => {
-    try {
-      const { open } = await import('@tauri-apps/plugin-dialog');
-      const path = await open({ directory: true, multiple: false, title: '选择下载保存目录' });
-      if (path && typeof path === 'string') {
-        await StorageUtil.setItem('download_directory', path);
-        await StorageUtil.setItem('auto_save_code_blocks', true);
-        window.dispatchEvent(new CustomEvent('download-dir-changed', { detail: path }));
+        // 持久化新 hash 到存储
+        if (newHashes.length > 0) {
+          await StorageUtil.setItem(hashesKey, Array.from(savedHashes));
+        }
+      } finally {
+        saveInProgressRef.current = false;
       }
-    } catch {
-      const manual = window.prompt('原生对话框不可用，请手动输入下载目录的完整路径：', '/home/unnet/Desktop/Chatless');
-      if (manual && manual.trim()) {
-        await StorageUtil.setItem('download_directory', manual.trim());
-        await StorageUtil.setItem('auto_save_code_blocks', true);
-        window.dispatchEvent(new CustomEvent('download-dir-changed', { detail: manual.trim() }));
+    })();
+  }, [isStreaming, content]);
+
+  const handleShowAutoSaveDir = async () => {
+    const dir = await StorageUtil.getItem<string>("download_directory", "");
+    if (dir) {
+      try {
+        const { exists } = await import('@tauri-apps/plugin-fs');
+        const dirExists = await exists(dir);
+        if (!dirExists) {
+          const { toast } = await import('@/components/ui/sonner');
+          toast.info('下载目录尚不存在，创建文件后自动生成');
+          return;
+        }
+        // 通过 Rust 端直调系统文件管理器（dde-file-manager / explorer / open）
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('open_file_manager', { path: dir });
+      } catch {
+        const { toast } = await import('@/components/ui/sonner');
+        toast.info(`自动保存目录: ${dir}`, { duration: 5000 });
       }
+    } else {
+      try {
+        const { toast } = await import('@/components/ui/sonner');
+        toast.info('尚未设置下载目录，请在设置中配置');
+      } catch { /* ignore */ }
     }
   };
 
@@ -650,9 +649,9 @@ export function AIMessageBlock({
       {!hasNoContent && (
         <div className="flex items-center gap-1 mb-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <button
-            onClick={handleSetDownloadDir}
+            onClick={handleShowAutoSaveDir}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
-            title="选择下载目录"
+            title="查看自动保存目录"
           >
             <FolderOpen className="w-3 h-3" />
           </button>

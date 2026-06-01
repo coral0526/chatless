@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Check, X, Globe } from 'lucide-react';
 import { WEB_SEARCH_SERVER_NAME } from '@/lib/mcp/nativeTools/webSearch';
 import { useAuthorizationStore } from '@/store/authorizationStore';
+import { CodeBlock } from '@/components/chat/CodeBlock';
 // 不再在卡片内部触发重试逻辑
 
 type ToolCallStatus = 'success' | 'error' | 'running' | 'pending_auth';
@@ -22,9 +23,25 @@ interface ToolCallCardProps {
 }
 
 export function ToolCallCard({ server, tool, status, args, resultPreview, errorMessage, schemaHint, cardId }: ToolCallCardProps) {
-  // 默认不用展开所有状态的卡片
-  const [open, setOpen] = React.useState(false);
   const { approveAuthorization, rejectAuthorization, hasPendingAuthorization } = useAuthorizationStore();
+
+  // 检测是否为文件创建类工具调用，提取代码内容用于语法高亮展示
+  const fileCreateTools = ['write_file', 'create_file', 'writeFile', 'createFile',
+    'write', 'save', 'save_file', 'saveFile', 'write_to_file', 'writeFileToWorkspace'];
+  const isFileCreateTool = fileCreateTools.includes(tool);
+  const fileCode = args && isFileCreateTool
+    ? String(args.content || args.text || args.code || args.data || '')
+    : '';
+  const filePathFromArgs = args && isFileCreateTool
+    ? String(args.path || args.file_path || args.filePath || args.filename || '')
+    : '';
+  const hasFileCode = isFileCreateTool && fileCode.trim().length > 0;
+  // 文件创建工具默认展开，让代码直接可见
+  const [open, setOpen] = React.useState(hasFileCode);
+  // 提取其他参数（排除代码内容，避免 JSON 区域冗余）
+  const otherArgs = args && isFileCreateTool
+    ? Object.fromEntries(Object.entries(args).filter(([k]) => !['content', 'text', 'code', 'data'].includes(k)))
+    : args;
   
   // 检查是否有待授权请求
   // 当 errorMessage 是 'pending_auth' 时，也视为等待授权状态
@@ -122,11 +139,30 @@ export function ToolCallCard({ server, tool, status, args, resultPreview, errorM
           </div>
         )}
       </div>
-      {/* 参数显示：所有状态下都显示（running/success/error） */}
+      {/* 参数显示：文件创建类工具用代码块展示，其他用 JSON */}
       {open && args && Object.keys(args).length > 0 && (
         <div className="px-3.5 py-2.5 text-[12px] text-slate-700 dark:text-slate-300">
-          <div className="mb-1.5 font-semibold text-slate-800 dark:text-slate-200">参数</div>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all text-[12px] bg-slate-100/50 dark:bg-slate-900/30 rounded-lg p-2.5 border border-slate-200/50 dark:border-slate-800/50">{JSON.stringify(args, null, 2)}</pre>
+          {hasFileCode ? (
+            <>
+              {filePathFromArgs && (
+                <div className="mb-1.5 font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                  <span className="text-[11px] font-mono text-slate-500">{filePathFromArgs}</span>
+                </div>
+              )}
+              <CodeBlock language={filePathFromArgs.split('.').pop() || 'text'} code={fileCode} />
+              {otherArgs && Object.keys(otherArgs).length > 0 && (
+                <div className="mt-2">
+                  <div className="mb-1.5 font-semibold text-slate-800 dark:text-slate-200">其他参数</div>
+                  <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all text-[11px] bg-slate-100/50 dark:bg-slate-900/30 rounded-lg p-2.5 border border-slate-200/50 dark:border-slate-800/50">{JSON.stringify(otherArgs, null, 2)}</pre>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="mb-1.5 font-semibold text-slate-800 dark:text-slate-200">参数</div>
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all text-[12px] bg-slate-100/50 dark:bg-slate-900/30 rounded-lg p-2.5 border border-slate-200/50 dark:border-slate-800/50">{JSON.stringify(args, null, 2)}</pre>
+            </>
+          )}
         </div>
       )}
       {/* 结果显示：仅成功状态显示 */}

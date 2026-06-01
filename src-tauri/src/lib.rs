@@ -18,6 +18,45 @@ pub mod mcp;
 pub mod web_search;
 
 #[tauri::command]
+fn open_file_manager(path: String) -> Result<(), String> {
+    let path = path.replace('\\', "/");
+    #[cfg(target_os = "linux")]
+    {
+        // pcmanfm 轻量可靠，是 Docker 容器首选
+        let candidates = ["pcmanfm", "dde-file-manager", "xdg-open", "nautilus", "thunar", "gio"];
+        for cmd in &candidates {
+            if let Ok(_child) = std::process::Command::new(cmd)
+                .arg(&path)
+                .spawn()
+            {
+                return Ok(());
+            }
+        }
+        Err("无法找到可用的文件管理器".into())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+    {
+        Err("不支持的操作系统".into())
+    }
+}
+
+#[tauri::command]
 fn exit(app: tauri::AppHandle, code: i32) {
   #[cfg(not(any(target_os = "android", target_os = "ios")))]
   {
@@ -201,6 +240,7 @@ pub fn run() {
       greet,
       generate_embedding_command,
       exit,
+      open_file_manager,
       set_log_level,
       // —— Environment Check Commands ——
       check_npx_availability,
