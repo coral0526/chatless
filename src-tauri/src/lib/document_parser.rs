@@ -45,6 +45,11 @@ impl DocumentParser {
       Some("html") | Some("htm") => Self::extract_html_text(file_path_str),
       Some("rtf") => Self::extract_rtf_text(file_path_str),
       Some("epub") => Self::extract_epub_text(file_path_str),
+      // 代码文件直接读取文本内容
+      Some("py" | "js" | "ts" | "jsx" | "tsx" | "rs" | "go" | "java" | "c" | "cpp" |
+           "h" | "sh" | "bash" | "yaml" | "yml" | "toml" | "xml" | "sql" | "r" |
+           "swift" | "kt" | "lua" | "rb" | "php" | "css" | "scss" | "less" |
+           "vue" | "svelte") => Self::extract_txt_text(file_path_str),
       Some(ext) => Err(anyhow::anyhow!("不支持的文件扩展名: {}", ext)),
       None => Err(anyhow::anyhow!(
         "无法确定文件类型，缺少扩展名: {}",
@@ -510,18 +515,17 @@ pub async fn parse_document_content(
 #[tauri::command]
 pub fn get_supported_file_types() -> Vec<String> {
   vec![
-    "pdf".to_string(),
-    "docx".to_string(),
-    "md".to_string(),
-    "markdown".to_string(),
-    "txt".to_string(),
-    "json".to_string(),
-    "csv".to_string(),
-    "xlsx".to_string(),
-    "xls".to_string(),
-    "html".to_string(),
-    "htm".to_string(),
-    "rtf".to_string(),
+    "pdf".to_string(), "docx".to_string(), "md".to_string(), "markdown".to_string(),
+    "txt".to_string(), "json".to_string(), "csv".to_string(), "xlsx".to_string(),
+    "xls".to_string(), "html".to_string(), "htm".to_string(), "rtf".to_string(),
     "epub".to_string(),
+    "py".to_string(), "js".to_string(), "ts".to_string(), "jsx".to_string(),
+    "tsx".to_string(), "rs".to_string(), "go".to_string(), "java".to_string(),
+    "c".to_string(), "cpp".to_string(), "h".to_string(), "sh".to_string(),
+    "bash".to_string(), "yaml".to_string(), "yml".to_string(), "toml".to_string(),
+    "xml".to_string(), "sql".to_string(), "r".to_string(), "swift".to_string(),
+    "kt".to_string(), "lua".to_string(), "rb".to_string(), "php".to_string(),
+    "css".to_string(), "scss".to_string(), "less".to_string(), "vue".to_string(),
+    "svelte".to_string(),
   ]
 }

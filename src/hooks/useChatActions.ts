@@ -262,7 +262,6 @@ export const useChatActions = (selectedModelId: string | null, currentProviderNa
           role: msg.role,
           content: msg.content || '',
           images: msg.images,
-          contextData: msg.context_data
         })) as any);
     }
     

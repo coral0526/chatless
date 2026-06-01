@@ -95,17 +95,36 @@ export function AIMessageBlock({
       // 只有文件名前面有关键词时才认为这是文件创建
       if (!createKeywords.test(beforeFn)) continue;
       const afterFn = text.slice(fnMatch.index + fnMatch[0].length);
-      // 找文件名后的反引号内容
-      const ctMatch = /`([^`]{1,50000})`/.exec(afterFn);
-      if (ctMatch) {
-        const content = ctMatch[1].trim();
-        if (content.length > 0) {
-          results.push({ fileName, content });
+      // 优先匹配代码块 ```lang\n...\n```
+      const fenceMatch = /```(\w*)\n([\s\S]*?)```/.exec(afterFn);
+      if (fenceMatch && fenceMatch[2].trim()) {
+        results.push({ fileName, content: fenceMatch[2].trimEnd() });
+      } else {
+        // 降级：匹配单行反引号内容 `...`
+        const ctMatch = /`([^`]{1,50000})`/.exec(afterFn);
+        if (ctMatch && ctMatch[1].trim()) {
+          results.push({ fileName, content: ctMatch[1].trim() });
         }
       }
     }
     return results;
   };
+
+  // 流式结束后从纯文本中提取文件描述，转为代码块展示
+  const detectedFileBlocks = useMemo(() => {
+    if (isStreaming) return [];
+    const scanText = (() => {
+      const parts: string[] = [];
+      if (content) parts.push(content);
+      if (segments) {
+        for (const s of segments) {
+          if (s.kind === 'text' && (s as any).text) parts.push((s as any).text);
+        }
+      }
+      return parts.join('\n');
+    })();
+    return parseTextFileDescriptions(scanText);
+  }, [isStreaming, content, segments]);
 
   // 自动保存代码块：流式进行中增量检测 code fences 并保存
   const savedBlockHashesRef = useRef<Set<number>>(new Set());
@@ -834,6 +853,24 @@ export function AIMessageBlock({
               })()}
             </div>
           ) : null}
+          {/* 纯文本文件描述转为代码块展示 */}
+          {detectedFileBlocks.length > 0 && (
+            <div className="flex flex-col gap-3 mt-2">
+              {detectedFileBlocks.map(({ fileName, content: fileContent }, i) => {
+                const ext = fileName.split('.').pop() || '';
+                return (
+                  <div key={`detected-file-${i}`} className="rounded-lg border border-slate-200/60 dark:border-slate-700/60 overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100/70 dark:bg-slate-800/70 border-b border-slate-200/60 dark:border-slate-700/60">
+                      <span className="text-[11px] font-mono font-semibold text-slate-600 dark:text-slate-400">{fileName}</span>
+                    </div>
+                    <div className="markdown-content-area bg-slate-50 dark:bg-slate-900/50 p-3">
+                      <MemoizedMarkdown content={`\`\`\`${ext}\n${fileContent}\n\`\`\``} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {/* MCP调用识别阶段：检测到（或抑制阀已识别到）工具调用但卡片尚未出现时显示加载动画 */}
           {isStreaming && (hasToolCallEarly || !!(viewModel as any)?.flags?.isToolDetecting) && mixedSegments.filter(s => s.type === 'card').length === 0 && (
             <div key="loader-tool-detecting" className="flex items-center gap-3 py-2">

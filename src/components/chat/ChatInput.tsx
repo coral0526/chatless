@@ -599,7 +599,7 @@ export function ChatInput({
 
     // 检查是否是可解析的文档类型
     const fileExtension = file.name.toLowerCase().split('.').pop();
-    const supportedTypes = ['pdf', 'docx', 'md', 'markdown', 'txt', 'json', 'csv', 'xlsx', 'xls', 'html', 'htm', 'rtf', 'epub'];
+    const supportedTypes = ['pdf', 'docx', 'md', 'markdown', 'txt', 'json', 'csv', 'xlsx', 'xls', 'html', 'htm', 'rtf', 'epub', 'py', 'js', 'ts', 'jsx', 'tsx', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'sh', 'bash', 'yaml', 'yml', 'toml', 'xml', 'sql', 'r', 'swift', 'kt', 'lua', 'rb', 'php', 'css', 'scss', 'less', 'vue', 'svelte'];
     const MAX_SIZE = 20 * 1024 * 1024; // 20MB，与后端限制一致
     if (file.size > MAX_SIZE) {
       toast.error('文档过大', { description: `当前限制为 ${Math.round(MAX_SIZE/1024/1024)}MB，请拆分后再试` });
@@ -1074,7 +1074,7 @@ export function ChatInput({
             ref={fileInputRef}
             onChange={handleFileUpload}
             className="hidden"
-            accept=".pdf, .docx, .md, .markdown, .txt, .json, .csv, .xlsx, .xls, .html, .htm, .rtf, .epub"
+            accept=".pdf, .docx, .md, .markdown, .txt, .json, .csv, .xlsx, .xls, .html, .htm, .rtf, .epub, .py, .js, .ts, .jsx, .tsx, .rs, .go, .java, .c, .cpp, .h, .sh, .bash, .yaml, .yml, .toml, .xml, .sql, .r, .swift, .kt, .lua, .rb, .php, .css, .scss, .less, .vue, .svelte"
             disabled={disabled}
           />
         </div>
