@@ -1,6 +1,6 @@
 // 应用信息配置
 export const APP_INFO = {
-  name: "通心",
+  name: "智能助手",
   description: "一个简洁实用的 AI 对话客户端，支持多模型与知识库。",
   author: "kamjin3086",
   repository: "https://github.com/kamjin3086/chatless",
