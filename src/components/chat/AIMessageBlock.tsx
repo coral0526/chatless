@@ -128,6 +128,7 @@ export function AIMessageBlock({
 
   // 自动保存代码块：内容 hash 持久化按目录去重，切换对话/删文件不再重复下载
   const saveInProgressRef = useRef(false);
+  const autoSaveDirRef = useRef<string>('');
 
   const hashContent = (s: string): string => {
     let h = 0;
@@ -169,6 +170,7 @@ export function AIMessageBlock({
         }
 
         const normalizedDir = dir.replace(/\\/g, '/').replace(/\/$/, '');
+        autoSaveDirRef.current = normalizedDir;
         const hashesKey = `auto_save_hashes_${hashContent(normalizedDir)}`;
         const stored = await StorageUtil.getItem<string[]>(hashesKey, []);
         const savedHashes = new Set(stored || []);
@@ -255,7 +257,8 @@ export function AIMessageBlock({
   }, [isStreaming, content]);
 
   const handleShowAutoSaveDir = async () => {
-    const dir = await StorageUtil.getItem<string>("download_directory", "");
+    // 优先使用本条消息实际保存的目录，其次回退到全局配置
+    const dir = autoSaveDirRef.current || await StorageUtil.getItem<string>("download_directory", "");
     if (dir) {
       try {
         const { exists } = await import('@tauri-apps/plugin-fs');

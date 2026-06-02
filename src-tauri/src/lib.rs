@@ -19,9 +19,9 @@ pub mod web_search;
 
 #[tauri::command]
 fn open_file_manager(path: String) -> Result<(), String> {
-    let path = path.replace('\\', "/");
     #[cfg(target_os = "linux")]
     {
+        let path = path.replace('\\', "/");
         // pcmanfm 轻量可靠，是 Docker 容器首选
         let candidates = ["pcmanfm", "dde-file-manager", "xdg-open", "nautilus", "thunar", "gio"];
         for cmd in &candidates {
