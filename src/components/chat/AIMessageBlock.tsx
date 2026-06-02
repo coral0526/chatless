@@ -136,6 +136,7 @@ export function AIMessageBlock({
   };
 
   useEffect(() => {
+    console.log('[autoSave] effect triggered, isStreaming:', isStreaming, 'content len:', content?.length, 'segments:', segments?.length);
     if (!content && !segments?.length) return;
     if (saveInProgressRef.current) return;
 
@@ -252,7 +253,7 @@ export function AIMessageBlock({
         saveInProgressRef.current = false;
       }
     })();
-  }, [isStreaming, content]);
+  }, [isStreaming, content, segments]);
 
   // 自动保存图片段
   const savedImageHashesRef = useRef<Set<number>>(new Set());
