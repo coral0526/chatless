@@ -59,13 +59,6 @@ const CodeBlock = memo(({ language, code }: CodeBlockProps) => {
     } catch {
       // dialog 不可用（Docker X11 等环境）
     }
-    // 降级：弹出文本输入
-    const manualPath = window.prompt('原生对话框不可用，请手动输入下载目录的完整路径：', '/home/unnet/Desktop/ChatClient/AppData');
-    if (manualPath && manualPath.trim()) {
-      await StorageUtil.setItem('download_directory', manualPath.trim());
-      await StorageUtil.setItem('auto_save_code_blocks', true);
-      window.dispatchEvent(new CustomEvent('download-dir-changed', { detail: manualPath.trim() }));
-    }
   }, []);
 
   const detectedLanguage = language || 'bash';
