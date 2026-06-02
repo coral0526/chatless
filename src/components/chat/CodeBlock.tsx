@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, memo, useCallback, useRef } from 'react';
-import { Copy, Check, Download, Loader2, FolderOpen, ExternalLink } from 'lucide-react';
+import { Copy, Check, Download, Loader2, FolderOpen } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Button } from '@/components/ui/button';
@@ -48,20 +48,11 @@ const CodeBlock = memo(({ language, code }: CodeBlockProps) => {
 
   const handleOpenAutoSaveDir = useCallback(async () => {
     const dir = await StorageUtil.getItem<string>("download_directory", "");
-    if (dir) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('open_file_manager', { path: dir });
-      } catch {
-        const { toast } = await import('@/components/ui/sonner');
-        toast.info(`自动保存目录: ${dir}`, { duration: 5000 });
-      }
-    } else {
-      try {
-        const { toast } = await import('@/components/ui/sonner');
-        toast.info('尚未设置下载目录，请在设置中配置');
-      } catch { /* ignore */ }
-    }
+    if (!dir) return;
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      await open({ directory: true, multiple: false, defaultPath: dir, title: '自动保存目录' });
+    } catch { /* ignore */ }
   }, []);
 
   const detectedLanguage = language || 'bash';
