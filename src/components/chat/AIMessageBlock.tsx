@@ -225,7 +225,7 @@ export function AIMessageBlock({
         saveInProgressRef.current = false;
       }
     })();
-  }, [isStreaming]);
+  }, [isStreaming, content, segments]);
 
   // 自动保存图片段
   const savedImageHashesRef = useRef<Set<number>>(new Set());
