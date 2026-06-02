@@ -129,22 +129,23 @@ export function AIMessageBlock({
   // 自动保存代码块：内容 hash 持久化按目录去重，切换对话/删文件不再重复下载
   const saveInProgressRef = useRef(false);
 
-  // 流式结束后自动保存代码块
-  const prevStreamingRef = useRef(isStreaming);
+  const hashContent = (s: string): string => {
+    let h = 0;
+    for (let i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h |= 0; }
+    return (h >>> 0).toString(36);
+  };
+
   useEffect(() => {
-    const wasStreaming = prevStreamingRef.current;
-    prevStreamingRef.current = isStreaming;
-    // 仅在流式结束瞬间触发
-    if (!wasStreaming || isStreaming) return;
+    console.log('[autoSave] effect triggered, isStreaming:', isStreaming, 'content len:', content?.length, 'segments:', segments?.length);
+    if (!content && !segments?.length) return;
     if (saveInProgressRef.current) return;
 
     (async () => {
       saveInProgressRef.current = true;
       try {
         const autoSave = await StorageUtil.getItem<boolean>("auto_save_code_blocks", true);
-        if (!autoSave) { console.log('[autoSave] auto_save_code_blocks is false, skip'); return; }
+        if (!autoSave) return;
 
-        // 合并 content 和 segments 的文本
         const scanText = (() => {
           const parts: string[] = [];
           if (content) parts.push(content);
@@ -156,23 +157,24 @@ export function AIMessageBlock({
           return parts.join('\n');
         })();
 
-        console.log('[autoSave] scanText length:', scanText.length);
-
         let dir = await StorageUtil.getItem<string>("download_directory", "");
         if (!dir || dir.length === 0) {
           try {
             const { documentDir } = await import('@tauri-apps/api/path');
             const docDir = await documentDir();
-            dir = docDir.startsWith('/root') ? '/home/unnet/Desktop/Chatless' : `${docDir}/Chatless`;
+            dir = docDir.startsWith('/root') ? '/home/unnet/Desktop/ChatClient/AppData' : `${docDir}/ChatClient/AppData`;
             await StorageUtil.setItem("download_directory", dir);
           } catch {
-            console.log('[autoSave] no default dir, skip');
             return;
           }
         }
-        console.log('[autoSave] dir:', dir);
 
         const normalizedDir = dir.replace(/\\/g, '/').replace(/\/$/, '');
+        const hashesKey = `auto_save_hashes_${hashContent(normalizedDir)}`;
+        const stored = await StorageUtil.getItem<string[]>(hashesKey, []);
+        const savedHashes = new Set(stored || []);
+        const newHashes: string[] = [];
+
         const { writeTextFile, mkdir, exists } = await import('@tauri-apps/plugin-fs');
         try {
           const dirExists = await exists(normalizedDir);
@@ -180,47 +182,73 @@ export function AIMessageBlock({
         } catch { /* ignore */ }
 
         const extMap: Record<string, string> = { js: '.js', ts: '.ts', tsx: '.tsx', jsx: '.jsx', py: '.py', rs: '.rs', go: '.go', java: '.java', c: '.c', cpp: '.cpp', h: '.h', html: '.html', css: '.css', json: '.json', yaml: '.yml', yml: '.yml', md: '.md', sql: '.sql', sh: '.sh', bash: '.sh', toml: '.toml', ini: '.ini', cfg: '.cfg', env: '.env', xml: '.xml', svg: '.svg', dockerfile: '.dockerfile', php: '.php', rb: '.rb', lua: '.lua', swift: '.swift', kt: '.kt', scala: '.scala', r: '.r', m: '.m' };
-        let savedCount = 0;
+
+        const trySave = async (code: string, lang: string, preferredName?: string) => {
+          if (!code || code.length === 0) return;
+          const h = hashContent(code);
+          if (savedHashes.has(h)) return;
+          savedHashes.add(h);
+          newHashes.push(h);
+          let fileName: string;
+          if (preferredName) {
+            fileName = preferredName;
+          } else {
+            const ext = extMap[lang.toLowerCase()] || `.${lang}`;
+            fileName = `code_${h.slice(0, 8)}${ext}`;
+          }
+          try {
+            await writeTextFile(`${normalizedDir}/${fileName}`, code);
+            console.log('[autoSave] ✅', `${normalizedDir}/${fileName}`);
+          } catch { /* skip */ }
+        };
+
+        let match;
 
         // 1) 标准 markdown 代码块
         const fenceRegex = /```(\w*)\n([\s\S]*?)```/g;
-        let match;
         while ((match = fenceRegex.exec(scanText)) !== null) {
-          const lang = match[1] || 'text';
-          const code = match[2].trimEnd();
-          if (!code) continue;
-          console.log('[autoSave] found code block:', lang, code.slice(0, 50));
-          const ext = extMap[lang.toLowerCase()] || `.${lang}`;
-          const fileName = `${lang}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`;
-          await writeTextFile(`${normalizedDir}/${fileName}`, code);
-          savedCount++;
+          await trySave(match[2].trimEnd(), match[1] || 'text');
         }
 
-        // 2) MCP 工具调用
+        // 2) MCP 工具调用中的文件创建（write_file / create_file）
         const toolXmlRegex = /<use_mcp_tool>([\s\S]*?)<\/use_mcp_tool>/gi;
         while ((match = toolXmlRegex.exec(scanText)) !== null) {
           try {
             const inner = match[1];
-            const tn = inner.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
-            const toolName = tn ? tn[1].trim() : '';
-            const ft = ['write_file', 'create_file', 'writeFile', 'createFile', 'write', 'save', 'save_file', 'saveFile', 'write_to_file', 'writeFileToWorkspace'];
-            if (!ft.includes(toolName)) continue;
-            const am = inner.match(/<arguments>([\s\S]*?)<\/arguments>/i);
-            if (!am) continue;
-            const args = JSON.parse(am[1].trim());
+            const toolNameMatch = inner.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
+            const toolName = toolNameMatch ? toolNameMatch[1].trim() : '';
+            const fileCreateTools = ['write_file', 'create_file', 'writeFile', 'createFile',
+              'write', 'save', 'save_file', 'saveFile', 'write_to_file', 'writeFileToWorkspace'];
+            if (!fileCreateTools.includes(toolName)) continue;
+
+            const argsMatch = inner.match(/<arguments>([\s\S]*?)<\/arguments>/i);
+            if (!argsMatch) continue;
+            const args = JSON.parse(argsMatch[1].trim());
             const code = args.content || args.text || args.code || args.data || '';
-            const fp = args.path || args.file_path || args.filePath || args.filename || '';
-            if (code && String(code).trim()) {
-              const fname = fp ? String(fp).replace(/\\/g, '/').split('/').pop() || 'file' : `file_${Date.now()}.txt`;
-              await writeTextFile(`${normalizedDir}/${fname}`, String(code).trimEnd());
-              savedCount++;
+            const filePath = args.path || args.file_path || args.filePath || args.filename || '';
+            if (code && String(code).trim().length > 0) {
+              const lang = filePath.includes('.') ? filePath.split('.').pop() || 'text' : 'text';
+              const fname = filePath ? String(filePath).replace(/\\/g, '/').split('/').pop() || undefined : undefined;
+              await trySave(String(code).trimEnd(), lang, fname);
             }
-          } catch { }
+          } catch { /* skip malformed tool XML */ }
         }
 
-        console.log('[autoSave] saved', savedCount, 'files to', normalizedDir);
-      } catch (e) {
-        console.error('[autoSave] error:', e);
+        // 3) 流式结束后：纯文本文件描述（需有关键词）
+        if (!isStreaming) {
+          const textFileMatches = parseTextFileDescriptions(scanText);
+          for (const { fileName, content: fileContent } of textFileMatches) {
+            if (fileContent && String(fileContent).trim().length > 0) {
+              const lang = fileName.includes('.') ? fileName.split('.').pop() || 'text' : 'text';
+              await trySave(String(fileContent).trimEnd(), lang, fileName);
+            }
+          }
+        }
+
+        // 持久化新 hash 到存储
+        if (newHashes.length > 0) {
+          await StorageUtil.setItem(hashesKey, Array.from(savedHashes));
+        }
       } finally {
         saveInProgressRef.current = false;
       }
