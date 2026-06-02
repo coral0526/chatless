@@ -53,8 +53,14 @@ const CodeBlock = memo(({ language, code }: CodeBlockProps) => {
         const { invoke } = await import('@tauri-apps/api/core');
         await invoke('open_file_manager', { path: dir });
       } catch {
-        // 降级：无法打开文件管理器
+        const { toast } = await import('@/components/ui/sonner');
+        toast.info(`自动保存目录: ${dir}`, { duration: 5000 });
       }
+    } else {
+      try {
+        const { toast } = await import('@/components/ui/sonner');
+        toast.info('尚未设置下载目录，请在设置中配置');
+      } catch { /* ignore */ }
     }
   }, []);
 
