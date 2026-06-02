@@ -380,7 +380,7 @@ export class McpToolExecutor {
         try {
           const { documentDir } = await import('@tauri-apps/api/path');
           const docDir = await documentDir();
-          dir = docDir.startsWith('/root') ? '/home/unnet/Desktop/Chatless' : `${docDir}/Chatless`;
+          dir = docDir.startsWith('/root') ? '/home/unnet/Desktop/ChatClient/AppData' : `${docDir}/ChatClient/AppData`;
         } catch {
           return;
         }

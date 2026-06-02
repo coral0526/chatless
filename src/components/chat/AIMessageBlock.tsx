@@ -161,7 +161,7 @@ export function AIMessageBlock({
           try {
             const { documentDir } = await import('@tauri-apps/api/path');
             const docDir = await documentDir();
-            dir = docDir.startsWith('/root') ? '/home/unnet/Desktop/Chatless' : `${docDir}/Chatless`;
+            dir = docDir.startsWith('/root') ? '/home/unnet/Desktop/ChatClient/AppData' : `${docDir}/ChatClient/AppData`;
             await StorageUtil.setItem("download_directory", dir);
           } catch {
             return;

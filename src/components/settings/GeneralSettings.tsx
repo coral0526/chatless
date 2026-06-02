@@ -63,7 +63,7 @@ export function GeneralSettings() {
       // dialog 不可用（Docker X11 等环境），降级为手动输入
     }
     setManualInput(true);
-    setManualPath(downloadDir || '/home/unnet/Desktop/Chatless');
+    setManualPath(downloadDir || '/home/unnet/Desktop/ChatClient/AppData');
   }, [downloadDir]);
 
   const handleManualSave = useCallback(() => {

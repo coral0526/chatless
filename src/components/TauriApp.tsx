@@ -90,15 +90,15 @@ export function TauriApp({ children }: TauriAppProps) {
         try {
           const { documentDir } = await import('@tauri-apps/api/path');
           const docDir = await documentDir();
-          const desktopDir = docDir.startsWith('/root') ? '/home/unnet/Desktop/Chatless' : `${docDir}/Chatless`;
+          const defaultDir = docDir.startsWith('/root') ? '/home/unnet/Desktop/ChatClient/AppData' : `${docDir}/ChatClient/AppData`;
 
           const dir = await StorageUtil.getItem<string>("download_directory", "");
           console.log('[TauriApp] 当前存储的 download_directory:', JSON.stringify(dir));
           // 修复无效路径：空值、/root 开头、包含 openclaw/workspace
           const needsReset = !dir || dir.startsWith('/root') || dir.includes('openclaw') || dir.includes('workspace');
           if (needsReset) {
-            console.log('[TauriApp] 检测到无效下载目录，重置为桌面:', JSON.stringify(dir), '→', desktopDir);
-            await StorageUtil.setItem("download_directory", desktopDir);
+            console.log('[TauriApp] 检测到无效下载目录，重置为桌面:', JSON.stringify(dir), '→', defaultDir);
+            await StorageUtil.setItem("download_directory", defaultDir);
           } else {
             console.log('[TauriApp] download_directory 有效:', dir);
           }
