@@ -17,7 +17,7 @@ import 'yet-another-react-lightbox/styles.css';
 import { downloadService } from '@/lib/utils/downloadService';
 import StorageUtil from '@/lib/storage';
 import { StreamingMarkdown } from './StreamingMarkdown';
-import { Download as DownloadIcon, Maximize2, Copy as CopyIcon } from 'lucide-react';
+import { Download as DownloadIcon, Maximize2, Copy as CopyIcon, FolderOpen, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface AIMessageBlockProps {
@@ -128,6 +128,7 @@ export function AIMessageBlock({
 
   // 自动保存代码块：内容 hash 持久化按目录去重，切换对话/删文件不再重复下载
   const saveInProgressRef = useRef(false);
+  const autoSaveDirRef = useRef<string>('');
 
   const hashContent = (s: string): string => {
     let h = 0;
@@ -254,6 +255,117 @@ export function AIMessageBlock({
     })();
   }, [isStreaming, content]);
 
+  const handleShowAutoSaveDir = async () => {
+    const dir = await StorageUtil.getItem<string>("download_directory", "") || autoSaveDirRef.current;
+    if (dir) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('open_file_manager', { path: dir });
+      } catch {
+        const { toast } = await import('@/components/ui/sonner');
+        toast.info(`自动保存目录: ${dir}`, { duration: 5000 });
+      }
+    } else {
+      try {
+        const { toast } = await import('@/components/ui/sonner');
+        toast.info('尚未设置下载目录，请在设置中配置');
+      } catch { /* ignore */ }
+    }
+  };
+
+  const handleSaveContent = async () => {
+    let dir = await StorageUtil.getItem<string>("download_directory", "");
+    if (!dir) {
+      // 没有设置目录，先让用户选
+      try {
+        const { open } = await import('@tauri-apps/plugin-dialog');
+        const path = await open({ directory: true, multiple: false, title: '选择下载保存目录' });
+        if (path && typeof path === 'string') {
+          dir = path;
+          await StorageUtil.setItem('download_directory', dir);
+        }
+      } catch { }
+      if (!dir) {
+        const manual = window.prompt('请先设置下载目录：', '/home/unnet/Desktop/Chatless');
+        if (manual && manual.trim()) {
+          dir = manual.trim();
+          await StorageUtil.setItem('download_directory', dir);
+        }
+      }
+      if (!dir) return;
+    }
+
+    const normalizedDir = dir.replace(/\\/g, '/').replace(/\/$/, '');
+    const { writeTextFile, mkdir, exists } = await import('@tauri-apps/plugin-fs');
+    try { const de = await exists(normalizedDir); if (!de) await mkdir(normalizedDir, { recursive: true }); } catch { }
+
+    // 合并 content 和 segments 的文本
+    const scanText = (() => {
+      const parts: string[] = [];
+      if (content) parts.push(content);
+      if (segments) {
+        for (const s of segments) {
+          if (s.kind === 'text' && (s as any).text) parts.push((s as any).text);
+        }
+      }
+      return parts.join('\n');
+    })();
+
+    const extMap: Record<string, string> = { js: '.js', ts: '.ts', tsx: '.tsx', jsx: '.jsx', py: '.py', rs: '.rs', go: '.go', java: '.java', c: '.c', cpp: '.cpp', html: '.html', css: '.css', json: '.json', yaml: '.yml', yml: '.yml', md: '.md', sql: '.sql', sh: '.sh', toml: '.toml', xml: '.xml', txt: '.txt' };
+    let savedCount = 0;
+
+    // 1) 标准 markdown 代码块
+    const fenceRegex = /```(\w*)\n([\s\S]*?)```/g;
+    let match;
+    while ((match = fenceRegex.exec(scanText)) !== null) {
+      const lang = match[1] || 'text';
+      const code = match[2].trimEnd();
+      if (!code) continue;
+      const ext = extMap[lang.toLowerCase()] || `.${lang}`;
+      const fileName = `${lang}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`;
+      await writeTextFile(`${normalizedDir}/${fileName}`, code);
+      savedCount++;
+    }
+
+    // 2) MCP 工具调用
+    const toolXmlRegex = /<use_mcp_tool>([\s\S]*?)<\/use_mcp_tool>/gi;
+    while ((match = toolXmlRegex.exec(scanText)) !== null) {
+      try {
+        const inner = match[1];
+        const tn = inner.match(/<tool_name>([\s\S]*?)<\/tool_name>/i);
+        const toolName = tn ? tn[1].trim() : '';
+        const ft = ['write_file', 'create_file', 'writeFile', 'createFile', 'write', 'save', 'save_file', 'saveFile', 'write_to_file', 'writeFileToWorkspace'];
+        if (!ft.includes(toolName)) continue;
+        const am = inner.match(/<arguments>([\s\S]*?)<\/arguments>/i);
+        if (!am) continue;
+        const args = JSON.parse(am[1].trim());
+        const code = args.content || args.text || args.code || args.data || '';
+        const fp = args.path || args.file_path || args.filePath || args.filename || '';
+        if (code && String(code).trim()) {
+          const fname = fp ? String(fp).replace(/\\/g, '/').split('/').pop() || 'file' : `file_${Date.now()}.txt`;
+          await writeTextFile(`${normalizedDir}/${fname}`, String(code).trimEnd());
+          savedCount++;
+        }
+      } catch { }
+    }
+
+    // 3) 纯文本文件描述
+    const textFileMatches = parseTextFileDescriptions(scanText);
+    for (const { fileName, content: fileContent } of textFileMatches) {
+      if (fileContent && String(fileContent).trim().length > 0) {
+        await writeTextFile(`${normalizedDir}/${fileName}`, String(fileContent).trimEnd());
+        savedCount++;
+      }
+    }
+
+    // 4) 没有可保存的文件内容
+    if (savedCount === 0) {
+      try { const { toast: t } = await import('@/components/ui/sonner'); t.info('未检测到可保存的文件内容'); } catch { }
+      return;
+    }
+
+    try { const { toast: t } = await import('@/components/ui/sonner'); t.success(`已保存 ${savedCount} 个文件到 ${normalizedDir}`); } catch { }
+  };
   // 自动保存图片段
   const savedImageHashesRef = useRef<Set<number>>(new Set());
   useEffect(() => {
@@ -524,6 +636,27 @@ export function AIMessageBlock({
 
   return (
     <div className="ai-markdown-container group w-full max-w-full min-w-0">
+
+      {/* 消息操作栏 - 悬停时显示 */}
+      {!hasNoContent && (
+        <div className="flex items-center gap-1 mb-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <button
+            onClick={handleShowAutoSaveDir}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+            title="查看自动保存目录"
+          >
+            <FolderOpen className="w-3 h-3" />
+          </button>
+          <button
+            onClick={handleSaveContent}
+            className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+            title="保存到下载目录"
+          >
+            <Save className="w-3 h-3" />
+            保存
+          </button>
+        </div>
+      )}
 
       {/* 初始加载状态 - 当AI还没有任何响应时显示 */}
       {hasNoContent && (
