@@ -2,7 +2,6 @@
 
 import { SettingsLayout } from "@/components/settings/SettingsLayout";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
-import { AiModelSettings } from "@/components/settings/AiModelSettings";
 import { KnowledgeBaseSettings } from "@/components/settings/KnowledgeBaseSettings";
 import { PrivacySecuritySettings } from "@/components/settings/PrivacySecuritySettings";
 import { AdvancedSettings } from "@/components/settings/AdvancedSettings";
@@ -31,8 +30,6 @@ export default function SettingsPage() {
     switch (activeTab) {
       case "mcpServers":
         return <McpServersSettings />;
-      case "localModels":
-        return <AiModelSettings />;
       case "knowledgeBase":
         return <KnowledgeBaseSettings />;
       case "apiKeys":

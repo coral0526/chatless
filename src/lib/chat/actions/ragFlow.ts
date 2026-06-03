@@ -32,6 +32,8 @@ export async function runRagFlow(params: {
 
   try {
     console.log('[RAG] 开始RAG流程:', { query, knowledgeBaseId, modelId, provider });
+    const { useChatStore: storeForNotify } = await import('@/store/chatStore');
+    if (conversationId) storeForNotify.getState().notifyStreamStart(conversationId);
     const ragService = await getRAGService();
     
     // 更新RAG服务的LLM配置

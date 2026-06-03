@@ -191,6 +191,7 @@ export function ChatInput({
       setInputValue("");
       setAttachedDocument(null);
       setAttachedImages([]);
+      setSelectedKnowledgeBase(null);
       try { clearInputDraft(convId); } catch { /* noop */ }
       // 开始流时不强制重置为最小值，保持用户手动高度或自动自适应
       if (textareaRef.current) {
