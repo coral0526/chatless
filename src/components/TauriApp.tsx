@@ -88,18 +88,26 @@ export function TauriApp({ children }: TauriAppProps) {
         try {
           const { documentDir } = await import('@tauri-apps/api/path');
           const docDir = await documentDir();
-          const defaultDir = docDir.startsWith('/root') ? '/home/unnet/Desktop/ChatClient/AppData' : `${docDir}/ChatClient/AppData`;
+          const defaultDir = docDir.startsWith('/root') ? '/home/unnet/Desktop/Chatless' : `${docDir}/Chatless`;
 
           const dir = await StorageUtil.getItem<string>("download_directory", "");
           console.log('[TauriApp] 当前存储的 download_directory:', JSON.stringify(dir));
           // 修复无效路径：空值、/root 开头、包含 openclaw/workspace
           const needsReset = !dir || dir.startsWith('/root') || dir.includes('openclaw') || dir.includes('workspace');
           if (needsReset) {
-            console.log('[TauriApp] 检测到无效下载目录，重置为桌面:', JSON.stringify(dir), '→', defaultDir);
+            console.log('[TauriApp] 检测到无效下载目录，重置为:', JSON.stringify(dir), '→', defaultDir);
             await StorageUtil.setItem("download_directory", defaultDir);
           } else {
             console.log('[TauriApp] download_directory 有效:', dir);
           }
+          // 确保目录存在
+          try {
+            const { exists, mkdir } = await import('@tauri-apps/plugin-fs');
+            const currentDir = needsReset ? defaultDir : dir;
+            const normalizedDir = currentDir.replace(/\\/g, '/').replace(/\/$/, '');
+            const dirExists = await exists(normalizedDir);
+            if (!dirExists) await mkdir(normalizedDir, { recursive: true });
+          } catch {}
           const auto = await StorageUtil.getItem<boolean | null>("auto_save_code_blocks", null);
           if (auto === null) await StorageUtil.setItem("auto_save_code_blocks", true);
         } catch { /* 非 Tauri 环境忽略 */ }

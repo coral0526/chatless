@@ -177,7 +177,10 @@ export function AIMessageBlock({
           const lang = match[1] || 'text';
           const code = match[2].trimEnd();
           if (!code) continue;
-          const ext = extMap[lang.toLowerCase()] || `.${lang}`;
+          const lowerLang = lang.toLowerCase();
+          if (lowerLang === 'text' || lowerLang === 'txt' || lowerLang === 'plaintext' || lowerLang === '') continue;
+          const ext = extMap[lowerLang] || `.${lang}`;
+          if (ext === '.txt') continue;
           const fileName = `${lang}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}${ext}`;
           await writeTextFile(`${normalizedDir}/${fileName}`, code);
           savedCount++;
