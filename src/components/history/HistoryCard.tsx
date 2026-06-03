@@ -135,14 +135,6 @@ const HistoryCard = memo(function HistoryCard({
         {/* 信息行：模型、消息数、标签、操作按钮 */}
         <div className="flex items-center justify-between text-xs">
           <div className="flex items-center gap-2 flex-wrap">
-            {/* 模型 */}
-            <span className={cn(
-              "px-1.5 py-0.5 rounded text-xs font-medium transition-all duration-150",
-              getModelColor(model)
-            )}>
-              {model}
-            </span>
-            
             {/* 消息数 */}
             <div className="flex items-center gap-0.5 text-gray-500 dark:text-gray-400">
               <Hash className="h-3 w-3" />

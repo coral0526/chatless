@@ -7,8 +7,7 @@ import {
   ChatIcon, 
   FolderIcon, 
   DatabaseIcon, 
-  HistoryIcon, 
-  AnalyticsIcon, 
+  HistoryIcon,
   SettingsIcon,
   BookmarkIcon,
 } from '@/components/icons/SidebarIcons';
@@ -24,7 +23,6 @@ const baseNavItems = [
   { href: '/resources', label: '知识资源', icon: FolderIcon },
   { href: '/knowledge', label: '知识库', icon: DatabaseIcon },
   { href: '/history', label: '历史记录', icon: HistoryIcon },
-  { href: '/analytics', label: '数据统计', icon: AnalyticsIcon },
   { href: '/settings', label: '设置', icon: SettingsIcon },
 ];
 

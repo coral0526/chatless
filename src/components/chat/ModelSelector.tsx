@@ -6,6 +6,7 @@ import type { ProviderMetadata, ModelMetadata } from '@/lib/metadata/types';
 import { metadataService } from '@/lib/metadata/MetadataService';
 import { specializedStorage } from '@/lib/storage';
 import Image from "next/image";
+import { Server } from "lucide-react";
 import { ModelBrandLogo } from './ModelBrandLogo';
 // import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
@@ -127,7 +128,8 @@ export function ModelSelector({
 
   // 根据用户排序对元数据做稳定排序（不改变原数组引用）
   const sortedMetadata = useMemo(() => {
-    const base = (allMetadata || []).slice();
+    const base = (allMetadata || [])
+      .filter((p: any) => p.name === 'OpenClawServer');
     if (!userOrder || userOrder.length === 0) return base;
     return base.sort((a, b) => {
       const ua = userOrder.indexOf(a.name);
@@ -310,7 +312,9 @@ export function ModelSelector({
         <SelectTrigger className="h-8 px-1.5 bg-transparent border-0 rounded-md text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 focus:ring-0">
           <span className="inline-flex items-center gap-2">
             {currentProvider && currentModelId ? (
-              !useProviderIcon ? (
+              currentProvider.name === 'OpenClawServer' ? (
+                <Server className="w-4 h-4 text-blue-500 dark:text-blue-400" />
+              ) : !useProviderIcon ? (
                 <div className="w-5 h-5 bg-gray-100 dark:bg-gray-200 rounded-sm">
                 <ModelBrandLogo
                   modelId={currentModelId}
@@ -352,7 +356,7 @@ export function ModelSelector({
             <span>
               {currentModelId
                 ? currentProvider
-                  ? `${(currentProvider.models.find(m=>m.name===currentModelId)?.label) || currentModelId} [ ${((currentProvider as any).displayName || currentProvider.name)} ]`
+                  ? `Server`
                   : currentModelId
                 : allMetadata.length === 0
                   ? '加载模型中...'

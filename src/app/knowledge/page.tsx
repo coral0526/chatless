@@ -2,7 +2,6 @@
 
 import { KnowledgeLayout } from "@/components/knowledge/KnowledgeLayout";
 import { RecentKnowledgeList } from "@/components/knowledge/RecentKnowledgeList";
-import { RAGQueryInterface } from "@/components/knowledge/RAGQueryInterface";
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { KnowledgeService, KnowledgeBase } from "@/lib/knowledgeService";
 import { UnifiedFileService } from '@/lib/unifiedFileService';
@@ -26,8 +25,6 @@ interface KnowledgeBaseWithCount extends KnowledgeBase {
 
 export default function KnowledgePage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('my'); // 'my', 'shared', 'templates', 'query'
-  const [activeFilter, setActiveFilter] = useState('all'); // 'all', 'online', 'local'
   const [sortBy, setSortBy] = useState('recent'); // 'recent', 'name', 'docs'
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBaseWithCount[]>([]);
   const [selectedKB, setSelectedKB] = useState<KnowledgeBase | null>(null);
@@ -152,11 +149,6 @@ export default function KnowledgePage() {
 
   // 根据筛选和排序处理知识库列表
   const filteredKnowledgeBases = knowledgeBases
-    .filter(kb => {
-      if (activeFilter === 'all') return true;
-      // 暂时所有知识库都是本地的
-      return activeFilter === 'local';
-    })
     .sort((a, b) => {
       if (sortBy === 'recent') {
         return b.updatedAt - a.updatedAt;
@@ -225,11 +217,7 @@ export default function KnowledgePage() {
   };
 
   return (
-    <KnowledgeLayout 
-      activeTab={activeTab} 
-      onTabChange={setActiveTab}
-      activeFilter={activeFilter}
-      onFilterChange={setActiveFilter}
+    <KnowledgeLayout
       sortBy={sortBy}
       onSortChange={setSortBy}
       onCreateKnowledgeBase={() => setShowCreateDialog(true)}
@@ -243,11 +231,6 @@ export default function KnowledgePage() {
         </div>
       ) : (
         <>
-          {/* RAG查询界面 */}
-          {activeTab === 'query' ? (
-            <RAGQueryInterface />
-          ) : (
-            <>
               <div className="flex h-full flex-col">
                 {/* 新建知识库按钮 - 移动设备上显示 */}
                 <div className="md:hidden mb-4 shrink-0">
@@ -343,8 +326,6 @@ export default function KnowledgePage() {
                   </div>
                 )}
               </div>
-            </>
-          )}
           <CreateKnowledgeDialog
             open={showCreateDialog}
             onOpenChange={setShowCreateDialog}

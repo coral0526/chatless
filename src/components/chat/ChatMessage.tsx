@@ -267,9 +267,6 @@ function ChatMessageComponent({
             isUser ? "self-end" : "self-start w-full"
           )}>
             <div className="flex items-center gap-2 min-w-0 whitespace-nowrap overflow-hidden">
-              {!isUser && model && (
-                <span className="font-medium truncate max-w-[40vw]">{model}</span>
-              )}
               <span className="shrink-0">{formattedTime}</span>
             </div>
             {/* AI消息功能按钮 */}

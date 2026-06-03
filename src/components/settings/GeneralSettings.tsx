@@ -11,7 +11,6 @@ import { useGlobalFontSize } from "@/hooks/useGlobalFontSize";
 import { PersonalizationSettings } from "./PersonalizationSettings";
 import { useUiPreferences } from '@/store/uiPreferences';
 import { ToggleSwitch } from './ToggleSwitch';
-import { ShortcutField } from './ShortcutField';
 import { ThemeInitializer } from "@/lib/utils/themeInitializer";
 
 // 主题设置键名
@@ -279,22 +278,6 @@ export function GeneralSettings() {
                      checked={ui.showCloseConfirmation}
                      onChange={(v) => ui.setShowCloseConfirmation(v)}
                    />
-
-                   <ToggleSwitch
-                     label="启用快捷指令面板"
-                     checked={ui.cmdPaletteEnabled}
-                     onChange={(v) => ui.setCmdPaletteEnabled(v)}
-                     tooltip="启用后可以使用快捷键快速搜索和执行各种操作"
-                   />
-
-                   {ui.cmdPaletteEnabled && (
-                     <ShortcutField
-                       label="快捷键映射"
-                       value={ui.cmdPaletteShortcut}
-                       onChange={ui.setCmdPaletteShortcut}
-                       tooltip="点击输入框后按下组合键设置，需包含 Ctrl/⌘/Alt/Shift 等修饰键"
-                     />
-                   )}
                  </div>
                </div>
              </>

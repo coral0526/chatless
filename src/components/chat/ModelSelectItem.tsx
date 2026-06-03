@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useMemo, useState } from 'react';
-import { Check, Sparkles, Settings } from 'lucide-react';
+import { Check, Sparkles, Settings, Server } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import type { ProviderMetadata, ModelMetadata } from '@/lib/metadata/types';
@@ -75,7 +75,9 @@ export function ModelSelectItem({
           "flex items-center gap-3 p-2.5 rounded-lg transition-colors cursor-pointer",
           isSelected ? "bg-blue-100 dark:bg-blue-600/40" : "hover:bg-gray-100 dark:hover:bg-gray-700/50"
         )}>
-      {(!useProviderIcon) ? (
+      {provider.name === 'OpenClawServer' ? (
+        <Server className="w-4 h-4 text-blue-500 dark:text-blue-400 flex-shrink-0" />
+      ) : (!useProviderIcon) ? (
         <div className="w-5 h-5 bg-gray-100 dark:bg-gray-200 rounded-sm">
         <ModelBrandLogo
           modelId={model.name}
@@ -124,7 +126,7 @@ export function ModelSelectItem({
 
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate text-gray-700 dark:text-gray-200">
-          {model.label || model.name}
+          {provider.name === 'OpenClawServer' ? 'Server' : (model.label || model.name)}
         </p>
       </div>
 

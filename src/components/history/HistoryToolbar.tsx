@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Download, Grid, List, BarChart3, RefreshCw, X, Search } from 'lucide-react';
+import { Trash2, Download, Grid, List, RefreshCw, X, Search } from 'lucide-react';
 import { SearchInput } from '@/components/ui/search-input';
 import { useHistoryStore } from '@/store/historyStore';
 import { useState } from 'react';
@@ -26,7 +26,6 @@ export default function HistoryToolbar() {
     sortBy,
     sortOrder,
     viewMode,
-    showStats,
     isLoading,
     setSearchQuery,
     clearSelection,
@@ -34,7 +33,6 @@ export default function HistoryToolbar() {
     setSortBy,
     setSortOrder,
     setViewMode,
-    toggleStats,
     refresh
   } = useHistoryStore();
 
@@ -142,7 +140,6 @@ export default function HistoryToolbar() {
                 <SelectContent>
                   <SelectItem value="date">时间</SelectItem>
                   <SelectItem value="title">标题</SelectItem>
-                  <SelectItem value="model">模型</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -178,17 +175,6 @@ export default function HistoryToolbar() {
                 <Grid className="h-4 w-4" />
               </Button>
             </div>
-
-            {/* 统计切换 */}
-            <Button
-              variant={showStats ? 'soft' : 'outline'}
-              size="sm"
-              className="h-8"
-              onClick={toggleStats}
-              title="显示统计信息"
-            >
-              <BarChart3 className="h-4 w-4" />
-            </Button>
 
             {/* 刷新 */}
             <Button

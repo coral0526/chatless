@@ -10,9 +10,7 @@ import {
   CheckCircle, 
   Clock, 
   AlertCircle,
-  Server,
   HardDrive,
-  Globe,
   RefreshCw,
   Zap
 } from 'lucide-react';
@@ -903,44 +901,6 @@ export function UniversalModelManager({}: UniversalModelManagerProps) {
         </div>
       </div>
 
-      {/* 策略选择 */}
-      <div className="space-y-3">
-        
-        <div className="flex items-center gap-2">
-          <Button
-            variant={selectedStrategy === 'ollama' ? 'soft' : 'outline'}
-            size="sm"
-            onClick={async () => {
-              console.log('切换到 Ollama 策略');
-              setSelectedStrategy('ollama');
-              // 策略切换时立即更新模型列表（独立于当前配置）
-              await updateModelListByStrategy('ollama');
-            }}
-            className="flex items-center space-x-1 h-8"
-          >
-            <Server className="w-4 h-4" />
-            <span>Ollama 服务</span>
-          </Button>
-          <Button
-            variant={selectedStrategy === 'local-onnx' ? 'soft' : 'outline'}
-            size="sm"
-            onClick={async () => {
-              console.log('切换到本地离线推理策略');
-              setSelectedStrategy('local-onnx');
-              await updateModelListByStrategy('local-onnx');
-            }}
-            className="flex items-center space-x-1 h-8"
-          >
-            <HardDrive className="w-4 h-4" />
-            <span>本地模型</span>
-          </Button>
-        </div>
-
-        <p className="text-xs text-gray-600 dark:text-gray-400">
-          {getStrategyDescription(selectedStrategy)}
-        </p>
-      </div>
-
       {/* 模型列表 */}
       <div className="space-y-3">
         <div className="grid gap-3">
@@ -1091,21 +1051,6 @@ export function UniversalModelManager({}: UniversalModelManagerProps) {
       </div>
 
       {/* 提示信息 */}
-      {selectedStrategy === 'ollama' ? (
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-          <div className="flex items-start space-x-2">
-            <Globe className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
-            <div className="text-sm text-blue-700 dark:text-blue-300">
-              <p className="font-medium mb-1">Ollama 使用说明</p>
-              <ul className="space-y-1 text-xs">
-                <li>• 可连接本地或远端 Ollama API 服务</li>
-                <li>• 请在「设置 → AI 模型」中配置 Ollama 服务地址与端口</li>
-                <li>• 模型首次调用时自动下载并缓存，可离线推理</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      ) : (
         <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
           <div className="flex items-start space-x-2">
             <HardDrive className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
@@ -1120,7 +1065,6 @@ export function UniversalModelManager({}: UniversalModelManagerProps) {
             </div>
           </div>
         </div>
-      )}
     </div>
   );
 } 
