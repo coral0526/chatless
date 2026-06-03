@@ -378,9 +378,9 @@ export class McpToolExecutor {
       let dir = await StorageUtil.getItem<string>("download_directory", "");
       if (!dir || dir.length === 0) {
         try {
-          const { documentDir } = await import('@tauri-apps/api/path');
-          const docDir = await documentDir();
-          dir = docDir.startsWith('/root') ? '/home/unnet/Desktop/ChatClient/AppData' : `${docDir}/ChatClient/AppData`;
+          const { desktopDir } = await import('@tauri-apps/api/path');
+          dir = await desktopDir();
+          if (dir.startsWith('/root')) dir = '/home/unnet/Desktop';
         } catch {
           return;
         }

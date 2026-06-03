@@ -86,9 +86,9 @@ export function TauriApp({ children }: TauriAppProps) {
 
         // 初始化默认下载目录
         try {
-          const { documentDir } = await import('@tauri-apps/api/path');
-          const docDir = await documentDir();
-          const defaultDir = docDir.startsWith('/root') ? '/home/unnet/Desktop/Chatless' : `${docDir}/Chatless`;
+          const { desktopDir } = await import('@tauri-apps/api/path');
+          let defaultDir = await desktopDir();
+          if (defaultDir.startsWith('/root')) defaultDir = '/home/unnet/Desktop';
 
           const dir = await StorageUtil.getItem<string>("download_directory", "");
           console.log('[TauriApp] 当前存储的 download_directory:', JSON.stringify(dir));
