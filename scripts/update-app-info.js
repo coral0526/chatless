@@ -49,10 +49,7 @@ try {
     `version: "${version}"`
   );
 
-  appInfoContent = appInfoContent.replace(
-    /name: "[^"]*"/,
-    `name: "${productName}"`
-  );
+  // name 字段保持手动设置，不再自动覆盖
 
   // 写回文件
   fs.writeFileSync(appInfoPath, appInfoContent);
