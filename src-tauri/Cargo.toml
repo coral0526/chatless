@@ -43,7 +43,7 @@ urlencoding = "2"
 
 # —— MCP Client (rmcp) ——
 # 启用 stdio 子进程、SSE 客户端与可流式 HTTP 客户端（reqwest 实现）
-rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", tag = "v0.17.0", features = [
+rmcp = { version = "1", features = [
   "client",
   "transport-child-process",
   "transport-sse-client-reqwest",
