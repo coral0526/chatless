@@ -160,26 +160,47 @@ pub fn run() {
             "libonnxruntime.so"
           };
 
-          match app_handle
+          // 1. 优先从 Tauri Resource 目录加载（bundled 模式）
+          let resource_path = app_handle
             .path()
             .resolve(lib_name, BaseDirectory::Resource)
-          {
-            Ok(resource_path) => {
-              println!("[ORT] Background init: attempting to load {lib_name} from: {:?}", resource_path);
-              if resource_path.exists() {
-                if let Err(e) = ort::init_from(resource_path.to_string_lossy().as_ref()).commit() {
-                  eprintln!("[WARN] ORT background init failed: {}", e);
-                } else {
-                  println!("[ORT] Background init succeeded");
-                }
-              } else {
-                eprintln!("[WARN] ORT library not found at {:?}", resource_path);
+            .ok();
+
+          if let Some(ref path) = resource_path {
+            if path.exists() {
+              println!("[ORT] Loading from resource: {:?}", path);
+              match ort::init_from(path.to_string_lossy().as_ref()).commit() {
+                Ok(_) => { println!("[ORT] Init succeeded (resource)"); return; }
+                Err(e) => eprintln!("[WARN] ORT resource init failed: {}", e),
               }
             }
-            Err(e) => {
-              eprintln!("[WARN] ORT resource resolve failed: {}", e);
+          }
+
+          // 2. 尝试 ORT_DYLIB_PATH 环境变量
+          if let Ok(env_path) = std::env::var("ORT_DYLIB_PATH") {
+            let p = std::path::Path::new(&env_path);
+            if p.exists() {
+              println!("[ORT] Loading from ORT_DYLIB_PATH: {}", env_path);
+              match ort::init_from(env_path).commit() {
+                Ok(_) => { println!("[ORT] Init succeeded (env)"); return; }
+                Err(e) => eprintln!("[WARN] ORT env init failed: {}", e),
+              }
             }
           }
+
+          // 3. 尝试系统路径（deb 安装后 libonnxruntime.so 在 /usr/lib）
+          for sys_path in &["/usr/lib/libonnxruntime.so", "/usr/local/lib/libonnxruntime.so"] {
+            let p = std::path::Path::new(sys_path);
+            if p.exists() {
+              println!("[ORT] Loading from system: {}", sys_path);
+              match ort::init_from(sys_path).commit() {
+                Ok(_) => { println!("[ORT] Init succeeded (system)"); return; }
+                Err(e) => eprintln!("[WARN] ORT system init failed: {}", e),
+              }
+            }
+          }
+
+          eprintln!("[WARN] ORT library not found in any known location");
         }
       });
 

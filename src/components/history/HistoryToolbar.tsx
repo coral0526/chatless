@@ -3,8 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Trash2, Download, Grid, List, RefreshCw, X, Search } from 'lucide-react';
-import { SearchInput } from '@/components/ui/search-input';
+import { Trash2, RefreshCw, X, Search } from 'lucide-react';
 import { useHistoryStore } from '@/store/historyStore';
 import { useState } from 'react';
 import {
@@ -25,14 +24,12 @@ export default function HistoryToolbar() {
     searchQuery,
     sortBy,
     sortOrder,
-    viewMode,
     isLoading,
     setSearchQuery,
     clearSelection,
     batchDelete,
     setSortBy,
     setSortOrder,
-    setViewMode,
     refresh
   } = useHistoryStore();
 
@@ -65,17 +62,6 @@ export default function HistoryToolbar() {
   // 取消批量删除
   const handleCancelBatchDelete = () => {
     setBatchDeleteDialogOpen(false);
-  };
-
-  const handleExportSelected = async () => {
-    // TODO: 实现批量导出功能
-    console.log('批量导出选中的对话:', selectedItems);
-  };
-
-  const handleExportAll = async () => {
-    // TODO: 实现全部导出功能
-    console.log('导出所有对话');
-    // 这里应该调用导出服务来导出所有对话
   };
 
   const clearSearch = () => {
@@ -119,17 +105,6 @@ export default function HistoryToolbar() {
 
           {/* 右侧：排序和视图控制 */}
           <div className="flex items-center gap-2">
-            {/* 全部导出按钮 */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={handleExportAll}
-              title="导出所有对话"
-            >
-              <Download className="h-4 w-4" />
-            </Button>
-
             {/* 排序控制 */}
             <div className="flex items-center gap-1">
               <span className="text-xs text-gray-500 whitespace-nowrap">排序:</span>
@@ -151,28 +126,6 @@ export default function HistoryToolbar() {
                 title={sortOrder === 'asc' ? '升序' : '降序'}
               >
                 {sortOrder === 'asc' ? '↑' : '↓'}
-              </Button>
-            </div>
-
-            {/* 视图切换 */}
-            <div className="flex border rounded-md">
-              <Button
-                variant={viewMode === 'list' ? 'soft' : 'ghost'}
-                size="sm"
-                className="rounded-r-none h-8"
-                onClick={() => setViewMode('list')}
-                title="列表视图"
-              >
-                <List className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'grid' ? 'soft' : 'ghost'}
-                size="sm"
-                className="rounded-l-none h-8"
-                onClick={() => setViewMode('grid')}
-                title="网格视图"
-              >
-                <Grid className="h-4 w-4" />
               </Button>
             </div>
 
@@ -203,9 +156,6 @@ export default function HistoryToolbar() {
             </div>
             
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={handleExportSelected} title="导出选中" className="cursor-pointer">
-                <Download className="h-4 w-4" />
-              </Button>
               <Button variant="ghost" size="icon" onClick={handleBatchDelete} title="删除选中" className="cursor-pointer">
                 <Trash2 className="h-4 w-4 text-red-500" />
               </Button>

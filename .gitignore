@@ -70,4 +70,4 @@ temp-*.md
 .cursor
 .cursor/*
 .cursorrules
-.cursor/**/*.mdc
+.cursor/**/*.mdcdocker/*.tgz

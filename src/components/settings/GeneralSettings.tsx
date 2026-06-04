@@ -15,11 +15,9 @@ import { ThemeInitializer } from "@/lib/utils/themeInitializer";
 
 // 主题设置键名
 const THEME_KEY = "app_theme"; // system / light / dark
-const LANG_KEY = "app_lang"; // zh / en
 
 export function GeneralSettings() {
   const [theme, setTheme] = useState<string>("system");
-  const [lang, setLang] = useState<string>("zh");
   const [initialized, setInitialized] = useState(false);
   const [downloadDir, setDownloadDir] = useState<string>("");
   const [autoSaveCodeBlocks, setAutoSaveCodeBlocks] = useState(false);
@@ -33,11 +31,9 @@ export function GeneralSettings() {
   useEffect(() => {
     const loadSettings = async () => {
       const savedTheme = await StorageUtil.getItem<string>(THEME_KEY, "system");
-      const savedLang = await StorageUtil.getItem<string>(LANG_KEY, "zh");
       const savedDir = await StorageUtil.getItem<string>("download_directory", "");
       const savedAuto = await StorageUtil.getItem<boolean>("auto_save_code_blocks", true);
       setTheme(savedTheme || "system");
-      setLang(savedLang || "zh");
       setDownloadDir(savedDir || "");
       setAutoSaveCodeBlocks(savedAuto || false);
       setInitialized(true);
@@ -92,13 +88,6 @@ export function GeneralSettings() {
     ThemeInitializer.applyTheme(theme);
   }, [theme, initialized]);
 
-  // 保存语言
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    StorageUtil.setItem(LANG_KEY, lang);
-    //toast.info("语言已切换（仅演示，需刷新后生效）");
-  }, [lang]);
-
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
@@ -122,15 +111,6 @@ export function GeneralSettings() {
 
                  {/* 设置内容 */}
          <div className="space-y-6">
-                 <SelectField
-           label="界面语言"
-           options={[
-             { value: "zh", label: "简体中文" },
-             { value: "en", label: "English" },
-           ]}
-           value={lang}
-           onChange={setLang}
-         />
 
          <SelectField
            label="主题模式"

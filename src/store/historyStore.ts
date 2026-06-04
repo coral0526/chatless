@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import { HistoryItem, HistoryFilter, HistoryGroup, HistoryStats } from '@/types/history';
 import { historyService } from '@/lib/historyService';
+import { useChatStore } from '@/store/chatStore';
 
 interface HistoryState {
   // 数据状态
@@ -346,15 +347,18 @@ export const useHistoryStore = create<HistoryState>()(
           set(state => {
             state.historyItems = state.historyItems.filter(item => item.id !== id);
             state.selectedItems = state.selectedItems.filter(item => item !== id);
-            
+
             // 同时从分组历史中删除
             state.groupedHistory.forEach(group => {
               group.items = group.items.filter(item => item.id !== id);
             });
-            
+
             // 移除空的分组
             state.groupedHistory = state.groupedHistory.filter(group => group.items.length > 0);
           });
+
+          // 同步删除聊天侧边栏的会话
+          try { useChatStore.getState().deleteConversation(id); } catch {}
         }
       } catch (error) {
         console.error('删除项目失败:', error);
@@ -364,12 +368,12 @@ export const useHistoryStore = create<HistoryState>()(
     // 批量删除
     batchDelete: async () => {
       const selectedIds = get().selectedItems;
-      
+
       if (selectedIds.length === 0) return;
-      
+
       try {
         const success = await historyService.batchDeleteConversations(selectedIds);
-        
+
         if (success) {
           set(state => {
             state.historyItems = state.historyItems.filter(
@@ -378,19 +382,24 @@ export const useHistoryStore = create<HistoryState>()(
             state.selectedItems = state.selectedItems.filter(
               item => !selectedIds.includes(item)
             );
-            
+
             // 同时从分组历史中删除
             state.groupedHistory.forEach(group => {
               group.items = group.items.filter(
                 item => !selectedIds.includes(item.id)
               );
             });
-            
+
             // 移除空的分组
             state.groupedHistory = state.groupedHistory.filter(
               group => group.items.length > 0
             );
           });
+
+          // 同步删除聊天侧边栏的会话
+          for (const id of selectedIds) {
+            try { useChatStore.getState().deleteConversation(id); } catch {}
+          }
         }
       } catch (error) {
         console.error('批量删除失败:', error);

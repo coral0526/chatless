@@ -9,8 +9,6 @@ import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { cn } from "@/lib/utils";
 import type { Conversation } from "@/types/chat";
-import { useProviderMetaStore } from '@/store/providerMetaStore';
-import type { ProviderMetadata } from '@/lib/metadata/types';
 
 interface ConversationItemProps {
   conversation: Conversation;
@@ -139,11 +137,6 @@ function ConversationItemImpl({
         <div className="flex items-center justify-between text-xs mt-0.5 ml-1.5 min-h-[14px]">
           <div className="flex-1 min-w-0 flex items-center gap-1.5 pr-1">
             <span className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">{compactTime}</span>
-            {/* 模型名：使用opacity控制显示，min-h保证高度不跳动 */}
-            <span className="text-slate-300 dark:text-slate-600 transition-opacity duration-200 group-hover:opacity-100 opacity-0 pointer-events-none">·</span>
-            <div className="flex items-center transition-opacity duration-200 group-hover:opacity-100 opacity-0 pointer-events-none">
-              <ModelLabelSpan conversation={conversation} />
-            </div>
           </div>
         </div>
       </li>
@@ -151,40 +144,6 @@ function ConversationItemImpl({
   );
 }
 
-function ModelLabelSpan({ conversation }: { conversation: Conversation }) {
-  const metadata = useProviderMetaStore((s)=> s.list as unknown as ProviderMetadata[]);
-  const maps = useMemo(() => {
-    const byModel = new Map<string, string>();
-    const byProvModel = new Map<string, string>();
-    for (const p of (metadata || [])) {
-      const provName = (p as any).name as string;
-      const models = (p as any).models || [];
-      for (const m of models) {
-        const id = m?.name as string;
-        const label = (m?.label as string) || '';
-        if (id && label) {
-          if (!byModel.has(id)) byModel.set(id, label);
-          byProvModel.set(`${provName}::${id}`, label);
-        }
-      }
-    }
-    return { byModel, byProvModel };
-  }, [metadata]);
-
-  const prov = (conversation as any).model_provider as string | undefined;
-  const id = conversation.model_id;
-  const key = prov ? `${prov}::${id}` : '';
-  const label = (prov && maps.byProvModel.get(key)) || maps.byModel.get(id);
-  const display = label || conversation.model_id;
-  return (
-    <span
-      className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap overflow-hidden text-ellipsis truncate max-w-[10rem] sm:max-w-[12rem]"
-      title={(conversation as any).model_full_id || conversation.model_id}
-    >
-      {display}
-    </span>
-  );
-}
 
 // 防止列表滚动时的重复渲染：仅在关键属性变更时更新
 export const ConversationItem = React.memo(ConversationItemImpl, (prev, next) => {
