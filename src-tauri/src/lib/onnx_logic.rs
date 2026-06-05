@@ -1,4 +1,5 @@
 use anyhow::Result;
+use log;
 use ndarray::Array2;
 use ort::{session::Session, value::Tensor};
 use std::sync::Mutex;
@@ -196,12 +197,24 @@ pub fn release_onnx_session(state: State<OnnxState>) -> Result<(), String> {
 pub fn check_bundled_model_exists(app: AppHandle) -> Result<bool, String> {
   let model_path = app
     .path()
-    .resolve(
-      "model.onnx",
-      BaseDirectory::Resource,
-    )
-    .map_err(|e| format!("Failed to resolve model path: {}", e))?;
-  Ok(model_path.exists())
+    .resolve("model.onnx", BaseDirectory::Resource)
+    .map_err(|e| {
+      let msg = format!("Failed to resolve model path: {}", e);
+      log::error!("[check_bundled] {}", msg);
+      msg
+    })?;
+  let exists = model_path.exists();
+  let resource_dir = app
+    .path()
+    .resolve("", BaseDirectory::Resource)
+    .unwrap_or_default();
+  log::info!(
+    "[check_bundled] resource_dir: {:?}, model_path: {:?}, exists: {}",
+    resource_dir,
+    model_path,
+    exists
+  );
+  Ok(exists)
 }
 
 /// 使用资源目录中捆绑的 ONNX 模型生成真实的嵌入向量。
