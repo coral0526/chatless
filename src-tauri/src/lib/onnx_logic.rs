@@ -208,12 +208,16 @@ pub fn check_bundled_model_exists(app: AppHandle) -> Result<bool, String> {
     .path()
     .resolve("", BaseDirectory::Resource)
     .unwrap_or_default();
-  log::info!(
-    "[check_bundled] resource_dir: {:?}, model_path: {:?}, exists: {}",
-    resource_dir,
-    model_path,
-    exists
+
+  // 写入调试日志到文件
+  let _ = std::fs::write(
+    "/tmp/chatless_debug.log",
+    format!(
+      "resource_dir: {:?}\nmodel_path: {:?}\nexists: {}\n",
+      resource_dir, model_path, exists
+    ),
   );
+
   Ok(exists)
 }
 
