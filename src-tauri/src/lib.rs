@@ -286,6 +286,8 @@ pub fn run() {
       onnx_logic::tokenize_batch,
       onnx_logic::generate_embedding,
       onnx_logic::release_onnx_session,
+      onnx_logic::check_bundled_model_exists,
+      onnx_logic::generate_bundled_embedding,
       // —— SSE Commands ——
       sse::start_sse,
       sse::stop_sse,

@@ -452,8 +452,21 @@ export class ModelManager {
    */
   private async checkOnnxModelExists(fileName: string): Promise<boolean> {
     try {
-      // 检查浏览器存储中是否存在文件
-      return await this.checkModelInStorage(fileName);
+      // 1. 先检查浏览器存储中是否存在（用户下载的模型）
+      const inStorage = await this.checkModelInStorage(fileName);
+      if (inStorage) return true;
+
+      // 2. 再检查资源目录中是否有捆绑模型（打包在 deb 中的）
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const bundled: boolean = await invoke('check_bundled_model_exists');
+        // 捆绑模型 all-minilm-l6-v2 的文件名是 model.onnx
+        if (bundled && fileName === 'model.onnx') return true;
+      } catch {
+        // 非 Tauri 环境或命令不可用，忽略
+      }
+
+      return false;
     } catch {
       return false;
     }
