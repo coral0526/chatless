@@ -460,14 +460,16 @@ export class ModelManager {
       try {
         const { invoke } = await import('@tauri-apps/api/core');
         const bundled: boolean = await invoke('check_bundled_model_exists');
+        console.log('[ModelManager] check_bundled_model_exists result:', bundled);
         // 捆绑模型 all-minilm-l6-v2 的文件名是 model.onnx
         if (bundled && fileName === 'model.onnx') return true;
-      } catch {
-        // 非 Tauri 环境或命令不可用，忽略
+      } catch (e) {
+        console.error('[ModelManager] check_bundled_model_exists error:', e);
       }
 
       return false;
-    } catch {
+    } catch (e) {
+      console.error('[ModelManager] checkOnnxModelExists error:', e);
       return false;
     }
   }

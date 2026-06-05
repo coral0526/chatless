@@ -33,10 +33,19 @@
   },
   "bundle": {
     "createUpdaterArtifacts": true,
-    "resources": {
-      "../docker/models/all-minilm-l6-v2/model.onnx": "models/all-minilm-l6-v2/",
-      "../docker/models/all-minilm-l6-v2/tokenizer.json": "models/all-minilm-l6-v2/",
-      "../docker/models/all-minilm-l6-v2/config.json": "models/all-minilm-l6-v2/"
+    "resources": [
+      "model.onnx",
+      "tokenizer.json",
+      "config.json"
+    ],
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/lib/zhinengzhushou/model.onnx": "model.onnx",
+          "/usr/lib/zhinengzhushou/tokenizer.json": "tokenizer.json",
+          "/usr/lib/zhinengzhushou/config.json": "config.json"
+        }
+      }
     }
   },
   "plugins": {

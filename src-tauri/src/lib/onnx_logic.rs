@@ -197,7 +197,7 @@ pub fn check_bundled_model_exists(app: AppHandle) -> Result<bool, String> {
   let model_path = app
     .path()
     .resolve(
-      "models/all-minilm-l6-v2/model.onnx",
+      "model.onnx",
       BaseDirectory::Resource,
     )
     .map_err(|e| format!("Failed to resolve model path: {}", e))?;
@@ -224,7 +224,7 @@ pub async fn generate_bundled_embedding(
       let model_path = app
         .path()
         .resolve(
-          "models/all-minilm-l6-v2/model.onnx",
+          "model.onnx",
           BaseDirectory::Resource,
         )
         .map_err(|e| format!("Failed to resolve model path: {}", e))?;
@@ -241,7 +241,7 @@ pub async fn generate_bundled_embedding(
     let tokenizer_path = app
       .path()
       .resolve(
-        "models/all-minilm-l6-v2/tokenizer.json",
+        "tokenizer.json",
         BaseDirectory::Resource,
       )
       .map_err(|e| format!("Failed to resolve tokenizer path: {}", e))?;
