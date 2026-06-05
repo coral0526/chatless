@@ -380,8 +380,10 @@ function ModelCard({
   onDelete, 
   onActivate 
 }: ModelCardProps) {
+  const isBundled = model.id === 'all-minilm-l6-v2';
+
   const getStatusBadge = () => {
-    if (model.isActive) {
+    if (isBundled || model.isActive) {
       return <Badge variant="default" className="bg-green-600">激活中</Badge>;
     }
     if (model.isDownloading) {
@@ -394,6 +396,11 @@ function ModelCard({
   };
 
   const getActionButton = () => {
+    if (isBundled) {
+      return (
+        <Badge variant="outline" className="text-green-600 border-green-600">已安装</Badge>
+      );
+    }
     if (model.isDownloading) {
       return (
         <Button
