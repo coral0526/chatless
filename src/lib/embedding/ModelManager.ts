@@ -68,10 +68,10 @@ export class ModelManager {
         tokenizerUrl: (config as any).tokenizerUrl,
         tokenizerFileName: (config as any).tokenizerFileName,
         dimensions: (config as any).dimensions,
-        isDownloaded: false,
+        isDownloaded: config.id === 'all-minilm-l6-v2', // 捆绑在 deb 中，预置已下载
         isDownloading: false,
         downloadProgress: 0,
-        isActive: false,
+        isActive: config.id === 'all-minilm-l6-v2', // 捆绑模型默认激活
         isRecommended: config.isRecommended,
         category: config.category,
       };
