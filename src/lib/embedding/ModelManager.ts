@@ -634,6 +634,8 @@ export class ModelManager {
       if (state && (state as any).models) {
         // 合并存储的状态和内置模型信息
         Object.entries((state as any).models).forEach(([id, storedModel]: [string, any]) => {
+          // 捆绑模型始终使用硬编码默认值，不被存储覆盖
+          if (id === 'all-minilm-l6-v2') return;
           const model = this.models.get(id);
           if (model) {
             model.isDownloaded = storedModel.isDownloaded || false;
